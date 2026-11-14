@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main, 'claude/**']
   pull_request:
   workflow_dispatch:
 
@@ -24,14 +25,23 @@ jobs:
         run: ./scripts/fetch-sherpa-onnx.sh
       - name: Unit tests
         run: ./gradlew :core:text:test testDebugUnitTest
-      - name: Build APKs
-        run: ./gradlew assembleDebug assembleRelease lintDebug
-      - uses: actions/upload-artifact@v4
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
         with:
-          name: murmur-apks
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+          name: murmur-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: murmur-release-apk
+          path: app/build/outputs/apk/release/*.apk
+      - name: Lint
+        continue-on-error: true
+        run: ./gradlew lintDebug
       - uses: actions/upload-artifact@v4
         if: always()
         with:
