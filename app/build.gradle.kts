@@ -47,14 +47,18 @@ android {
     }
 }
 
+// sherpa-onnx comes either from the prebuilt AAR (scripts/fetch-sherpa-onnx.sh, used by CI) or
+// from a source build (scripts/build-sherpa-from-source.sh), which vendors the Kotlin API into
+// src/main/java/com/k2fsa and the native libraries into src/main/jniLibs.
 val sherpaAar = rootProject.file("app/libs/sherpa-onnx.aar")
-if (!sherpaAar.exists()) {
-    logger.warn("app/libs/sherpa-onnx.aar is missing. Run ./scripts/fetch-sherpa-onnx.sh first.")
+val sherpaFromSource = file("src/main/java/com/k2fsa/sherpa/onnx/Tts.kt").exists()
+if (!sherpaAar.exists() && !sherpaFromSource) {
+    logger.warn("sherpa-onnx missing: run ./scripts/fetch-sherpa-onnx.sh or ./scripts/build-sherpa-from-source.sh")
 }
 
 dependencies {
     implementation(project(":core:text"))
-    implementation(files(sherpaAar))
+    if (!sherpaFromSource) implementation(files(sherpaAar))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

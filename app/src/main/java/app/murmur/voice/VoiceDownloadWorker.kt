@@ -165,5 +165,6 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         const val KEY_PHASE = "phase"
         const val KEY_ERROR = "error"
         private const val NOTIFICATION_ID = 2001
+        private const val DEFAULT_BUFFER = 64 * 1024
     }
 }

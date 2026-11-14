@@ -9,3 +9,6 @@ build/
 .cxx
 .kotlin/
 app/libs/*.aar
+# Outputs of scripts/build-sherpa-from-source.sh
+app/src/main/jniLibs/
+app/src/main/java/com/k2fsa/

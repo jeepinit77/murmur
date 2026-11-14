@@ -16,7 +16,7 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.serialization.json)
-    implementation(libs.jsoup)
+    api(libs.jsoup)
     implementation(libs.readability4j)
     testImplementation(libs.junit)
 }
