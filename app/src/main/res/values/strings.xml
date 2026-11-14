@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Murmur</string>
+    <string name="share_label">Read aloud now</string>
+    <string name="process_text_label">Read aloud</string>
+    <string name="reading">Reading aloud…</string>
+    <string name="queued">Added to the reading queue</string>
+    <string name="nothing_to_read">Nothing to read in what was shared</string>
+    <string name="need_voice">Download a voice first</string>
+    <string name="channel_playback">Playback</string>
+    <string name="channel_downloads">Voice downloads</string>
+    <string name="preparing">Preparing to read…</string>
+    <string name="sample_text">This is Murmur, reading text aloud with a neural voice that runs entirely on your phone.</string>
+</resources>

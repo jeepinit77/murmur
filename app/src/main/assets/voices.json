@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "voices": [
+    {
+      "id": "kokoro-en-v0_19",
+      "name": "Kokoro (English)",
+      "engine": "kokoro",
+      "languages": ["en-US", "en-GB"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
+      "sizeMb": 305,
+      "quality": "Best",
+      "license": "Apache-2.0",
+      "description": "Most natural-sounding voices. 11 American and British speakers. Needs ~400 MB RAM.",
+      "speakers": ["Default blend", "Bella", "Nicole", "Sarah", "Sky", "Adam", "Michael", "Emma (UK)", "Isabella (UK)", "George (UK)", "Lewis (UK)"],
+      "defaultSpeaker": 1
+    },
+    {
+      "id": "kokoro-multi-lang-v1_0",
+      "name": "Kokoro v1.0 (multilingual)",
+      "engine": "kokoro",
+      "languages": ["en-US", "en-GB", "es-ES", "fr-FR", "it-IT", "pt-BR", "hi-IN", "ja-JP", "zh-CN"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
+      "sizeMb": 330,
+      "quality": "Best",
+      "license": "Apache-2.0",
+      "description": "Kokoro v1.0 with 53 speakers across several languages.",
+      "defaultSpeaker": 3
+    },
+    {
+      "id": "vits-piper-en_US-lessac-medium",
+      "name": "Lessac (US English)",
+      "engine": "piper",
+      "languages": ["en-US"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "Blizzard license (non-commercial use)",
+      "description": "Clear female US voice. Very fast; recommended for the system TTS engine and TalkBack."
+    },
+    {
+      "id": "vits-piper-en_US-ryan-medium",
+      "name": "Ryan (US English)",
+      "engine": "piper",
+      "languages": ["en-US"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "CC BY-NC-SA 4.0",
+      "description": "Male US voice."
+    },
+    {
+      "id": "vits-piper-en_US-amy-low",
+      "name": "Amy (US English, small)",
+      "engine": "piper",
+      "languages": ["en-US"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low.tar.bz2",
+      "sizeMb": 30,
+      "quality": "Fair, fastest",
+      "license": "Public domain (dataset)",
+      "description": "Smallest and fastest download."
+    },
+    {
+      "id": "vits-piper-en_GB-alan-medium",
+      "name": "Alan (British English)",
+      "engine": "piper",
+      "languages": ["en-GB"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "CC BY-SA 4.0",
+      "description": "Male British voice."
+    },
+    {
+      "id": "vits-piper-de_DE-thorsten-medium",
+      "name": "Thorsten (German)",
+      "engine": "piper",
+      "languages": ["de-DE"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-de_DE-thorsten-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "CC0-1.0",
+      "description": "Male German voice."
+    },
+    {
+      "id": "vits-piper-es_ES-davefx-medium",
+      "name": "Davefx (Spanish)",
+      "engine": "piper",
+      "languages": ["es-ES"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_ES-davefx-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "CC0-1.0",
+      "description": "Male Spanish voice."
+    },
+    {
+      "id": "vits-piper-fr_FR-siwis-medium",
+      "name": "Siwis (French)",
+      "engine": "piper",
+      "languages": ["fr-FR"],
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-medium.tar.bz2",
+      "sizeMb": 64,
+      "quality": "Good, fast",
+      "license": "CC BY 4.0",
+      "description": "Female French voice."
+    }
+  ]
+}
