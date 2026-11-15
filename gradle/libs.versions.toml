@@ -1,6 +1,6 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
+kotlin = "2.3.0"
 coreKtx = "1.15.0"
 activityCompose = "1.9.3"
 lifecycle = "2.8.7"
@@ -17,6 +17,7 @@ serialization = "1.7.3"
 coroutines = "1.9.0"
 guava = "33.3.1-android"
 junit = "4.13.2"
+mlkitTts = "1.0.0-alpha1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -44,6 +45,7 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-coroutines-guava = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-guava", version.ref = "coroutines" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 junit = { module = "junit:junit", version.ref = "junit" }
+mlkit-genai-tts = { module = "com.google.mlkit:genai-text-to-speech", version.ref = "mlkitTts" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

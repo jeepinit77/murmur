@@ -12,11 +12,9 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
-class Audio(val samples: FloatArray, val sampleRate: Int)
-
 /**
  * Owns the single loaded neural TTS model. All inference runs on one dedicated thread,
- * so the reader and the system TTS engine share one copy of the (large) model.
+ * so the reader and voice previews share one copy of the (large) model.
  *
  * This is the only file that touches the sherpa-onnx API.
  */

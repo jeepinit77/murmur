@@ -24,6 +24,11 @@ class VoiceCatalogTest {
             assertTrue(v.url.startsWith("https://"))
             assertTrue(v.url.endsWith(".tar.bz2"))
             assertTrue(v.defaultSpeaker == 0 || v.speakers.isEmpty() || v.defaultSpeaker < v.speakers.size)
+            assertTrue("${v.id} has unknown quality '${v.quality}'", v.qualityRank > 0)
+            val genders = listOfNotNull(v.gender) + v.speakers.mapNotNull { it.gender }
+            assertTrue("${v.id} has an unknown gender", genders.all { it == "female" || it == "male" })
+            assertTrue("${v.id} has no gender", v.speakers.isNotEmpty() || v.gender != null)
+            v.speakers.forEach { s -> s.language?.let { assertTrue("${v.id}/${s.name}: $it", it in v.languages) } }
         }
         assertEquals(EngineType.KOKORO, catalog.voices.first().engine)
     }

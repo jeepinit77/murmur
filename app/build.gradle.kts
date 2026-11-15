@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -19,6 +21,19 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
+    // foss: open-source voices only (sherpa-onnx). play: also offers Google's on-device voices
+    // through ML Kit, a proprietary library, on phones that support them.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+            isDefault = true
+        }
+        create("foss") {
+            dimension = "distribution"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -32,7 +47,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -45,6 +59,10 @@ android {
     lint {
         abortOnError = false
     }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
 // sherpa-onnx comes either from the prebuilt AAR (scripts/fetch-sherpa-onnx.sh, used by CI) or
@@ -82,5 +100,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.guava)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    "playImplementation"(libs.mlkit.genai.tts)
     testImplementation(libs.junit)
 }

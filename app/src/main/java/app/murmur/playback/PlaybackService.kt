@@ -12,6 +12,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import app.murmur.MurmurApp
@@ -38,17 +39,32 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var speakJob: Job? = null
+    private lateinit var openPlayer: PendingIntent
 
     override fun onCreate() {
         super.onCreate()
         val c = container
         val player = SessionPlayer(speechPlayer(this), c.reader)
-        val open = PendingIntent.getActivity(
+        openPlayer = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_ROUTE, MainActivity.ROUTE_NOW_PLAYING),
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_ROUTE, MainActivity.ROUTE_NOW_PLAYING)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, player).setSessionActivity(open).build()
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setNotificationId(NOTIFICATION_ID)
+                .setChannelId(MurmurApp.CHANNEL_PLAYBACK)
+                .build()
+                .apply { setSmallIcon(R.drawable.ic_notification) },
+        )
+        val s = MediaSession.Builder(this, player).setSessionActivity(openPlayer).build()
+        session = s
+        // Media3 only attaches a session to the service (and so to the media notification) when
+        // a controller binds. The share path never opens the UI, so no controller ever binds:
+        // register it ourselves, otherwise the "Preparing" placeholder is never replaced.
+        addSession(s)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -110,6 +126,7 @@ class PlaybackService : MediaSessionService() {
         NotificationCompat.Builder(this, MurmurApp.CHANNEL_PLAYBACK)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.preparing))
+            .setContentIntent(openPlayer)
             .setOngoing(true)
             .setSilent(true)
             .build()

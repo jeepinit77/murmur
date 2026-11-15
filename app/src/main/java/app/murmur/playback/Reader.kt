@@ -20,13 +20,16 @@ import app.murmur.text.Document
 import app.murmur.text.Segment
 import app.murmur.text.SentenceSegmenter
 import app.murmur.text.SpeechText
-import app.murmur.voice.Synthesizer
-import app.murmur.voice.VoiceRepository
+import app.murmur.voice.PcmVoiceSource
+import app.murmur.voice.PlayingVoiceSource
+import app.murmur.voice.Voice
+import app.murmur.voice.VoiceSources
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
@@ -83,8 +86,7 @@ class ReaderContent(val docId: String, val document: Document, val segments: Lis
 class Reader(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val synthesizer: Synthesizer,
-    private val voices: VoiceRepository,
+    private val voices: VoiceSources,
     private val settings: Settings,
     private val library: LibraryStore,
 ) {
@@ -261,85 +263,113 @@ class Reader(
         _state.update { it.copy(buffering = true) }
         registerNoisy()
         playJob = scope.launch {
-            val resolved = voices.resolve(settings.voice.value)
-            if (resolved == null) {
+            val voice = voices.resolve()
+            if (voice == null) {
                 showError("Download a voice first")
                 return@launch
             }
-            val (pack, speaker) = resolved
-            val speed = _state.value.speed
-            // Neural models sound best up to ~1.6x; go faster with pitch-preserving time-stretch.
-            val modelSpeed = min(speed, MAX_MODEL_SPEED)
-            val trackSpeed = speed / modelSpeed
-            val pauseShort = 90
-            val pausePara = settings.paragraphPauseMs.value
-
-            val chunks = Channel<Chunk>(capacity = LOOKAHEAD)
-            val producer = launch(Dispatchers.Default) {
-                try {
-                    var first = true
-                    for (i in from until content.segments.size) {
-                        val seg = content.segments[i]
-                        val text = SpeechText.normalize(seg.text)
-                        val pieces = if (first) SpeechText.splitForFastStart(text) else listOf(text)
-                        first = false
-                        var rate = 0
-                        for (piece in pieces) {
-                            if (piece.isBlank() || piece.none { it.isLetterOrDigit() }) continue
-                            val audio = synthesizer.generate(pack, speaker, piece, modelSpeed)
-                            rate = audio.sampleRate
-                            chunks.send(Chunk(i, Pcm.trimSilence(audio.samples, rate), rate))
-                        }
-                        if (rate > 0) {
-                            chunks.send(Chunk(i, Pcm.silence(rate, if (seg.endsParagraph) pausePara else pauseShort), rate))
-                        }
-                    }
-                    chunks.close()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    chunks.close(e)
-                }
-            }
-
             try {
-                withContext(Dispatchers.IO) {
-                    var written = 0L
-                    var t: AudioTrack? = null
-                    for (chunk in chunks) {
-                        if (t == null || trackRate != chunk.sampleRate) {
-                            t?.let { releaseTrack(it) }
-                            t = newTrack(chunk.sampleRate, trackSpeed)
-                            written = 0L
-                        }
-                        if (chunk.index != _state.value.currentIndex || _state.value.buffering) {
-                            withContext(Dispatchers.Main) {
-                                _state.update { it.copy(currentIndex = chunk.index, buffering = false) }
-                                library.setProgress(content.docId, chunk.index)
-                            }
-                        }
-                        written += writeBlocking(t, chunk.samples)
-                    }
-                    // Let the tail of the last sentence play out.
-                    if (t != null) {
-                        while ((t.playbackHeadPosition.toLong() and 0xffffffffL) < written) {
-                            coroutineContext.ensureActive()
-                            delay(50)
-                        }
-                    }
+                when (val source = voices.sourceOf(voice)) {
+                    is PcmVoiceSource -> streamPcm(source, voice, content, from)
+                    is PlayingVoiceSource -> speakDirectly(source, voice, content, from)
                 }
                 onEnded(content)
             } catch (e: CancellationException) {
-                producer.cancel()
                 throw e
             } catch (e: Throwable) {
-                producer.cancel()
                 if (!coroutineContext.isActive) return@launch
                 Log.e(TAG, "Playback failed", e)
                 showError(e.message ?: "Speech failed")
             }
         }
     }
+
+    /** Synthesizes a few segments ahead while an [AudioTrack] plays what is ready. */
+    private suspend fun streamPcm(source: PcmVoiceSource, voice: Voice, content: ReaderContent, from: Int) = coroutineScope {
+        val speed = _state.value.speed
+        // Neural models sound best up to ~1.6x; go faster with pitch-preserving time-stretch.
+        val modelSpeed = min(speed, MAX_MODEL_SPEED)
+        val trackSpeed = speed / modelSpeed
+        val pauseShort = 90
+        val pausePara = settings.paragraphPauseMs.value
+
+        val chunks = Channel<Chunk>(capacity = LOOKAHEAD)
+        launch(Dispatchers.Default) {
+            try {
+                var first = true
+                for (i in from until content.segments.size) {
+                    val seg = content.segments[i]
+                    val text = SpeechText.normalize(seg.text)
+                    val pieces = if (first) SpeechText.splitForFastStart(text) else listOf(text)
+                    first = false
+                    var rate = 0
+                    for (piece in pieces) {
+                        if (!isSpeakable(piece)) continue
+                        val audio = source.synthesize(voice, piece, modelSpeed)
+                        rate = audio.sampleRate
+                        chunks.send(Chunk(i, Pcm.trimSilence(audio.samples, rate), rate))
+                    }
+                    if (rate > 0) {
+                        chunks.send(Chunk(i, Pcm.silence(rate, if (seg.endsParagraph) pausePara else pauseShort), rate))
+                    }
+                }
+                chunks.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                chunks.close(e)
+            }
+        }
+
+        withContext(Dispatchers.IO) {
+            var written = 0L
+            var t: AudioTrack? = null
+            for (chunk in chunks) {
+                if (t == null || trackRate != chunk.sampleRate) {
+                    t?.let { releaseTrack(it) }
+                    t = newTrack(chunk.sampleRate, trackSpeed)
+                    written = 0L
+                }
+                if (chunk.index != _state.value.currentIndex || _state.value.buffering) {
+                    withContext(Dispatchers.Main) {
+                        _state.update { it.copy(currentIndex = chunk.index, buffering = false) }
+                        library.setProgress(content.docId, chunk.index)
+                    }
+                }
+                written += writeBlocking(t, chunk.samples)
+            }
+            // Let the tail of the last sentence play out.
+            if (t != null) {
+                while ((t.playbackHeadPosition.toLong() and 0xffffffffL) < written) {
+                    coroutineContext.ensureActive()
+                    delay(50)
+                }
+            }
+        }
+    }
+
+    /**
+     * For sources that play audio themselves: one request per sentence, highlighting each
+     * sentence as its audio starts.
+     */
+    private suspend fun speakDirectly(source: PlayingVoiceSource, voice: Voice, content: ReaderContent, from: Int) {
+        val pausePara = settings.paragraphPauseMs.value
+        for (i in from until content.segments.size) {
+            val seg = content.segments[i]
+            val text = SpeechText.normalize(seg.text)
+            if (!isSpeakable(text)) continue
+            if (i != _state.value.currentIndex) {
+                _state.update { it.copy(currentIndex = i) }
+                library.setProgress(content.docId, i)
+            }
+            source.speak(voice, text, _state.value.speed) {
+                if (_state.value.buffering) _state.update { it.copy(buffering = false) }
+            }
+            if (seg.endsParagraph && pausePara > 0) delay(pausePara.toLong())
+        }
+    }
+
+    private fun isSpeakable(text: String) = text.isNotBlank() && text.any { it.isLetterOrDigit() }
 
     private suspend fun onEnded(content: ReaderContent) {
         library.setProgress(content.docId, 0)

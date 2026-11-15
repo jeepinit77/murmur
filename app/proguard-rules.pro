@@ -10,3 +10,8 @@
 -dontwarn org.brotli.dec.**
 -dontwarn org.tukaani.xz.**
 -dontwarn org.objectweb.asm.**
+
+# MlKitVoiceSource sets speech rate and pitch on ML Kit's internal TextToSpeech, found by type.
+-keepclassmembers class com.google.mlkit.genai.texttospeech.SpeechSynthesizer {
+    android.speech.tts.TextToSpeech *;
+}
