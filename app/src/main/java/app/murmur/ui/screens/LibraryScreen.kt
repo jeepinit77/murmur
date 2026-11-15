@@ -76,11 +76,32 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import app.murmur.library.LibraryStore
+import app.murmur.library.SearchHit
+import app.murmur.text.Snippet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -88,9 +109,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun LibraryScreen(
     onOpen: (String) -> Unit,
+    /** Opens a document with its find bar showing the query. */
+    onOpenFind: (String, String) -> Unit,
     onVoices: () -> Unit,
     onSettings: () -> Unit,
     onNowPlaying: () -> Unit,
+    onNotificationReading: () -> Unit,
 ) {
     val context = LocalContext.current
     val c = context.container
@@ -106,6 +130,23 @@ fun LibraryScreen(
     val speed by c.settings.speed.collectAsStateWithLifecycle()
     var clipboardLink by remember { mutableStateOf<SharedLink?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var fullText by rememberSaveable { mutableStateOf(true) }
+    var hits by remember { mutableStateOf<List<SearchHit>?>(null) }
+    val notificationReading by c.settings.notificationReading.collectAsStateWithLifecycle()
+    var notificationTip by remember { mutableStateOf(!c.settings.notificationTipDismissed) }
+
+    LaunchedEffect(searching, query, fullText, docs) {
+        hits = null
+        if (!searching || query.isBlank()) return@LaunchedEffect
+        delay(250) // wait for typing to pause
+        hits = c.library.search(query, fullText)
+    }
+    BackHandler(enabled = searching) {
+        searching = false
+        query = ""
+    }
 
     // Offer a link the user just copied, unless it's already in the library or was dismissed.
     LaunchedEffect(lifecycleOwner) {
@@ -130,8 +171,10 @@ fun LibraryScreen(
                 c.reader.state.value.notice?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
                 onOpen(outcome.meta.id)
             } catch (e: PendingImportException) {
+                c.cues.playError()
                 Toast.makeText(context, "${e.message}. ${context.getString(R.string.saved_for_later)}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
+                c.cues.playError()
                 Toast.makeText(context, e.message ?: "Import failed", Toast.LENGTH_LONG).show()
             } finally {
                 busy = false
@@ -146,15 +189,26 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Murmur") },
-                actions = {
-                    IconButton(onClick = onVoices) { Icon(Icons.Default.RecordVoiceOver, "Voices") }
-                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
-                },
-            )
+            if (searching) {
+                SearchTopBar(
+                    query = query,
+                    placeholder = "Search library",
+                    onQueryChange = { query = it },
+                    onClose = { searching = false; query = "" },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Murmur") },
+                    actions = {
+                        if (docs.isNotEmpty()) IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Search") }
+                        IconButton(onClick = onVoices) { Icon(Icons.Default.RecordVoiceOver, "Voices") }
+                        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
+                    },
+                )
+            }
         },
         floatingActionButton = {
+            if (searching) return@Scaffold // no Add button while searching
             // One sized child: Scaffold drops zero-size children of this slot, which hid the menu.
             Box {
                 ExtendedFloatingActionButton(
@@ -205,6 +259,16 @@ fun LibraryScreen(
                     },
                 )
             }
+            // Suggest notification reading once the library is in use; never shown again after Dismiss.
+            if (notificationTip && !notificationReading && !searching && installed.isNotEmpty() && docs.isNotEmpty()) {
+                NotificationReadingCard(
+                    onSetUp = onNotificationReading,
+                    onDismiss = {
+                        c.settings.notificationTipDismissed = true
+                        notificationTip = false
+                    },
+                )
+            }
             if (installed.isEmpty()) {
                 Card(Modifier.fillMaxWidth().padding(16.dp).clickable(onClick = onVoices)) {
                     Column(Modifier.padding(16.dp)) {
@@ -213,7 +277,23 @@ fun LibraryScreen(
                     }
                 }
             }
-            if (docs.isEmpty()) {
+            if (searching) {
+                SearchResults(
+                    hits = hits,
+                    query = query,
+                    fullText = fullText,
+                    onFullTextChange = { fullText = it },
+                    progress = progress,
+                    speed = speed,
+                    onOpen = { hit ->
+                        when {
+                            hit.meta.status != DocStatus.READY -> Unit
+                            hit.snippet != null -> onOpenFind(hit.meta.id, query.trim())
+                            else -> onOpen(hit.meta.id)
+                        }
+                    },
+                )
+            } else if (docs.isEmpty()) {
                 EmptyLibrary()
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -273,6 +353,107 @@ fun LibraryScreen(
 }
 
 @Composable
+private fun SearchResults(
+    hits: List<SearchHit>?,
+    query: String,
+    fullText: Boolean,
+    onFullTextChange: (Boolean) -> Unit,
+    progress: Map<String, Int>,
+    speed: Float,
+    onOpen: (SearchHit) -> Unit,
+) {
+    Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = fullText, onClick = { onFullTextChange(true) }, label = { Text("Full text") })
+        FilterChip(selected = !fullText, onClick = { onFullTextChange(false) }, label = { Text("Titles only") })
+    }
+    when {
+        query.isBlank() -> Unit
+        hits == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+        hits.isEmpty() -> Text(
+            "No results", style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+        )
+        else -> LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+            items(hits, key = { it.meta.id }) { hit ->
+                DocRow(
+                    doc = hit.meta,
+                    progress = progress[hit.meta.id] ?: 0,
+                    speed = speed,
+                    onClick = { onOpen(hit) },
+                    snippet = hit.snippet,
+                    matchCount = hit.count,
+                )
+            }
+        }
+    }
+}
+
+/** A top app bar holding a search field, with a back button that closes it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchTopBar(
+    query: String,
+    placeholder: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    onSearch: () -> Unit = {},
+    actions: @Composable () -> Unit = {},
+) {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    TopAppBar(
+        navigationIcon = {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close search") }
+        },
+        title = {
+            TextField(
+                value = query,
+                onValueChange = onQueryChange,
+                placeholder = { Text(placeholder, maxLines = 1) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch(); keyboard?.hide() }),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+        },
+        actions = {
+            actions()
+            if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Default.Close, "Clear") }
+        },
+    )
+}
+
+@Composable
+private fun SnippetText(snippet: Snippet, matchCount: Int) {
+    val mark = MaterialTheme.colorScheme.tertiaryContainer
+    val onMark = MaterialTheme.colorScheme.onTertiaryContainer
+    val text = remember(snippet, mark) {
+        buildAnnotatedString {
+            append(snippet.text)
+            addStyle(SpanStyle(background = mark, color = onMark, fontWeight = FontWeight.Medium), snippet.start, snippet.end)
+        }
+    }
+    Column(Modifier.padding(top = 4.dp)) {
+        Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (matchCount > 1) {
+            val max = LibraryStore.MAX_COUNTED_MATCHES
+            Text(
+                if (matchCount >= max) "$max+ matches" else "$matchCount matches",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun EmptyLibrary() {
     Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
@@ -287,10 +468,13 @@ private fun DocRow(
     progress: Int,
     speed: Float,
     onClick: () -> Unit,
-    onReload: () -> Unit,
-    onOpenOriginal: () -> Unit,
-    onSignIn: () -> Unit,
-    onDelete: () -> Unit,
+    onReload: () -> Unit = {},
+    onOpenOriginal: () -> Unit = {},
+    onSignIn: () -> Unit = {},
+    /** Null hides the More options menu, as in search results. */
+    onDelete: (() -> Unit)? = null,
+    snippet: Snippet? = null,
+    matchCount: Int = 0,
 ) {
     var menu by remember { mutableStateOf(false) }
     ListItem(
@@ -330,6 +514,7 @@ private fun DocRow(
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
+                snippet?.let { SnippetText(it, matchCount) }
                 if (doc.incomplete && doc.status == DocStatus.READY) {
                     Text(
                         "May be incomplete", style = MaterialTheme.typography.labelMedium,
@@ -344,7 +529,8 @@ private fun DocRow(
                 }
             }
         },
-        trailingContent = {
+        trailingContent = if (onDelete == null) null else {
+            {
             Row {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More options") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -357,6 +543,7 @@ private fun DocRow(
                     }
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
                 }
+            }
             }
         },
     )
@@ -375,6 +562,21 @@ private fun ClipboardLinkCard(link: SharedLink, onAdd: () -> Unit, onDismiss: ()
                 )
             }
             TextButton(onClick = onAdd) { Text("Add") }
+            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Dismiss") }
+        }
+    }
+}
+
+@Composable
+private fun NotificationReadingCard(onSetUp: () -> Unit, onDismiss: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Notifications, null)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text("Read notifications aloud", style = MaterialTheme.typography.titleSmall)
+                Text("Choose apps whose notifications Murmur can read to you.", style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = onSetUp) { Text("Set up") }
             IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Dismiss") }
         }
     }

@@ -34,24 +34,39 @@ class Imports(
     /** A document in the library, and whether it was already there. */
     class Outcome(val meta: DocMeta, val document: Document, val existing: Boolean)
 
-    /** Imports shared or pasted text, fetching the page when the text is a link share. */
-    suspend fun text(text: String, subject: String? = null, onStage: (String) -> Unit = {}): Outcome {
+    /**
+     * Imports shared or pasted text, fetching the page when the text is a link share.
+     * [importAgain] replaces a saved copy of the page instead of returning it (see [link]).
+     */
+    suspend fun text(
+        text: String,
+        subject: String? = null,
+        onStage: (String) -> Unit = {},
+        importAgain: Boolean = false,
+    ): Outcome {
         val link = SharedLink.parse(text, subject)
-        if (link != null) return link(link.url, link.titleHint, onStage)
+        if (link != null) return link(link.url, link.titleHint, onStage, importAgain)
         return save(importer.fromText(text, subject))
     }
 
     /**
-     * Imports a web page. If the same article is already in the library, returns it instead.
-     * A network failure saves the link as pending and rethrows, so the caller can say so.
+     * Imports a web page. If the same article is already in the library, returns it instead,
+     * unless [importAgain] is set: then the page is fetched again and replaces the saved copy,
+     * starting from the beginning. A network failure saves the link as pending and rethrows,
+     * so the caller can say so; when importing again, the saved copy is left as it was.
      */
-    suspend fun link(url: String, titleHint: String? = null, onStage: (String) -> Unit = {}): Outcome {
+    suspend fun link(
+        url: String,
+        titleHint: String? = null,
+        onStage: (String) -> Unit = {},
+        importAgain: Boolean = false,
+    ): Outcome {
         val normalized = UrlNormalizer.normalize(url)
-        existing(UrlNormalizer.key(normalized))?.let { return it }
+        if (!importAgain) existing(UrlNormalizer.key(normalized))?.let { return it }
         val result = try {
             web.import(normalized, settings.extractOptions(), titleHint, onStage)
         } catch (e: ImportException) {
-            if (e.retryable) {
+            if (e.retryable && !(importAgain && existing(UrlNormalizer.key(normalized)) != null)) {
                 val title = titleHint ?: WebArticleExtractor.slugTitle(normalized) ?: UrlNormalizer.displayHost(normalized) ?: normalized
                 val pending = library.findByUrlKey(UrlNormalizer.key(normalized))
                     ?: library.addPending(title, normalized, listOf(UrlNormalizer.key(normalized)), e.message)
@@ -60,13 +75,17 @@ class Imports(
             }
             throw e
         }
-        existing(*result.urlKeys.toTypedArray())?.let { return it }
-        // The same link was saved earlier while offline: fill in that entry instead of adding another.
-        library.findByUrlKey(*result.urlKeys.toTypedArray())?.takeIf { it.status != DocStatus.READY }?.let { waiting ->
+        if (!importAgain) existing(*result.urlKeys.toTypedArray())?.let { return it }
+        // The same link was saved earlier (while offline, or a copy being imported again):
+        // fill in that entry instead of adding another.
+        library.findByUrlKey(*result.urlKeys.toTypedArray())?.takeIf { importAgain || it.status != DocStatus.READY }?.let { saved ->
             val doc = result.imported.document
             val count = withContext(Dispatchers.Default) { SentenceSegmenter().segment(doc).size }
-            library.replace(waiting.id, doc, result.imported.source, result.imported.kind, count, result.urlKeys)
-                ?.let { return Outcome(it, doc, existing = false) }
+            library.replace(saved.id, doc, result.imported.source, result.imported.kind, count, result.urlKeys)
+                ?.let {
+                    library.setProgress(it.id, 0)
+                    return Outcome(it, doc, existing = false)
+                }
         }
         return save(result.imported, result.urlKeys)
     }
@@ -122,6 +141,10 @@ class Imports(
         library.setStatus(id, DocStatus.PENDING, null)
         scheduleRetry(id)
     }
+
+    /** A ready saved copy of [url] in the library, if there is one. */
+    suspend fun savedCopy(url: String): DocMeta? =
+        library.findByUrlKey(UrlNormalizer.key(UrlNormalizer.normalize(url)))?.takeIf { it.status == DocStatus.READY }
 
     private suspend fun existing(vararg keys: String): Outcome? {
         val meta = library.findByUrlKey(*keys)?.takeIf { it.status == DocStatus.READY } ?: return null

@@ -9,6 +9,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Lets notification reading show the names and icons of the apps that post notifications. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MurmurApp"
         android:allowBackup="true"
@@ -85,6 +93,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Asks whether to resume or import again when a shared page is already saved. -->
+        <activity
+            android:name=".share.SavedPageActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="app.murmur.share"
+            android:theme="@style/Theme.Murmur.Invisible" />
+
         <activity
             android:name=".web.SiteSignInActivity"
             android:exported="false"
@@ -98,6 +115,21 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- Notification reading (off by default): only active after the user grants notification access. -->
+        <service
+            android:name=".notifications.NotificationReaderService"
+            android:exported="true"
+            android:label="@string/channel_notification_reading"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".notifications.NotificationActionReceiver"
+            android:exported="false" />
 
         <!-- WorkManager's foreground service needs an explicit type on Android 14+ for model downloads. -->
         <service

@@ -3,6 +3,8 @@ package app.murmur.library
 import android.content.Context
 import androidx.core.content.edit
 import app.murmur.text.Document
+import app.murmur.text.Snippet
+import app.murmur.text.TextSearch
 import app.murmur.web.UrlNormalizer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -10,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +21,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.lang.ref.SoftReference
+import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 
 @Serializable
@@ -40,9 +45,14 @@ data class DocMeta(
     /** The article looks cut off by a paywall or sign-in prompt. */
     val incomplete: Boolean = false,
     val siteName: String? = null,
+    /** Has tables waiting to be summarized when the on-device model can run. */
+    val pendingTables: Boolean = false,
 ) {
     val isWeb: Boolean get() = kind == Importer.KIND_WEB && source.startsWith("http")
 }
+
+/** A library search result. [snippet] and [count] describe matches in the text, when searched. */
+data class SearchHit(val meta: DocMeta, val titleMatch: Boolean, val snippet: Snippet?, val count: Int)
 
 @Serializable
 enum class DocStatus {
@@ -65,6 +75,8 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private val loaded = CompletableDeferred<Unit>()
+    /** Loaded documents kept for repeat searches; the GC may drop them. */
+    private val searchCache = ConcurrentHashMap<String, SoftReference<Document>>()
 
     private val _docs = MutableStateFlow<List<DocMeta>>(emptyList())
     val docs: StateFlow<List<DocMeta>> = _docs.asStateFlow()
@@ -154,6 +166,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
             mutex.withLock {
                 val old = _docs.value.firstOrNull { it.id == id } ?: return@withContext null
                 File(dir, "$id.json").writeText(json.encodeToString(Document.serializer(), document))
+                searchCache.remove(id)
                 val meta = old.copy(
                     title = document.title, author = document.author, source = source, kind = kind,
                     segmentCount = segmentCount, status = DocStatus.READY, error = null,
@@ -185,18 +198,52 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         wordCount = document.wordCount(),
         incomplete = document.incomplete,
         siteName = document.siteName,
+        pendingTables = document.pendingTables.isNotEmpty(),
     )
 
     suspend fun load(id: String): Document? = withContext(Dispatchers.IO) {
         runCatching { json.decodeFromString(Document.serializer(), File(dir, "$id.json").readText()) }.getOrNull()
     }
 
+    /**
+     * Documents whose title, author or site matches [query], and with [fullText] also those whose
+     * text does. Title matches come first; otherwise the library order is kept.
+     */
+    suspend fun search(query: String, fullText: Boolean): List<SearchHit> = withContext(Dispatchers.IO) {
+        val folded = TextSearch.prepare(query) ?: return@withContext emptyList()
+        loaded.await()
+        val hits = ArrayList<SearchHit>()
+        for (meta in _docs.value) {
+            ensureActive()
+            val titleMatch = listOfNotNull(meta.title, meta.author, meta.siteName).any { TextSearch.contains(it, folded) }
+            if (!fullText || meta.status != DocStatus.READY) {
+                if (titleMatch) hits += SearchHit(meta, true, null, 0)
+                continue
+            }
+            val doc = searchCache[meta.id]?.get() ?: load(meta.id)?.also { searchCache[meta.id] = SoftReference(it) }
+            val matches = doc?.let { TextSearch.find(it, query, limit = MAX_COUNTED_MATCHES) }.orEmpty()
+            if (!titleMatch && matches.isEmpty()) continue
+            val snippet = matches.firstOrNull()?.let { m ->
+                TextSearch.snippet(doc!!.chapters[m.chapter].paragraphs[m.paragraph], m.start, m.end)
+            }
+            hits += SearchHit(meta, titleMatch, snippet, matches.size)
+        }
+        hits.sortedByDescending { it.titleMatch }
+    }
+
     fun meta(id: String): DocMeta? = _docs.value.firstOrNull { it.id == id }
+
+    /** Every item, once the library has loaded. */
+    suspend fun all(): List<DocMeta> {
+        loaded.await()
+        return _docs.value
+    }
 
     fun delete(id: String) {
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 File(dir, "$id.json").delete()
+                searchCache.remove(id)
                 val list = _docs.value.filterNot { it.id == id }
                 writeIndex(list)
                 _docs.value = list
@@ -217,5 +264,10 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         val tmp = File(dir, "index.json.tmp")
         tmp.writeText(json.encodeToString(ListSerializer(DocMeta.serializer()), list))
         tmp.renameTo(indexFile)
+    }
+
+    companion object {
+        /** Match counts above this show as "100+". */
+        const val MAX_COUNTED_MATCHES = 100
     }
 }

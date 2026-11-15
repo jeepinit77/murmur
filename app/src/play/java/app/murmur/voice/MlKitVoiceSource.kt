@@ -17,16 +17,21 @@ import com.google.mlkit.genai.texttospeech.VoiceInfo
 import com.google.mlkit.genai.texttospeech.speechSynthesizerOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.lang.reflect.Field
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 
 /**
  * Google's on-device voices through the ML Kit GenAI Text-to-Speech API (alpha). Supported on
@@ -36,13 +41,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Google's speech app plays the audio itself. The API has no speed or pitch setting, so Google's
  * engine would use Android's system text-to-speech rate and pitch; [applyRateAndPitch] sets them
  * on the client's internal TextToSpeech instead.
+ *
+ * ML Kit can report a voice as available while Google's speech app hasn't installed it, and by
+ * default the speech app then reads with another voice without reporting an error. So voice
+ * fallback is turned off, and a voice counts as ready only when the speech app lists it as
+ * installed ([installedInEngine]).
  */
 class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : PlayingVoiceSource {
 
     override val id = ID
 
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("mlkit_voices", Context.MODE_PRIVATE)
-    private val client: SpeechSynthesizer by lazy { SpeechSynthesis.getClient(speechSynthesizerOptions(Locale.US) {}) }
+    private val client: SpeechSynthesizer by lazy {
+        // Without fallback, a voice that isn't installed fails instead of being read by another voice.
+        SpeechSynthesis.getClient(speechSynthesizerOptions(Locale.US) { setVoiceFallbackEnabled(false) })
+    }
     private val infos = ConcurrentHashMap<String, VoiceInfo>()
     private val downloads = ConcurrentHashMap<String, MutableStateFlow<DownloadState>>()
     private val downloadJobs = ConcurrentHashMap<String, Job>()
@@ -97,7 +111,8 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
                     }
                 }
                 refreshStatus()
-                state.value = DownloadState.Idle
+                // ML Kit can finish a download that the speech app still hasn't installed.
+                state.value = if (voice.id in _installed.value) DownloadState.Idle else DownloadState.Failed(NOT_INSTALLED_PACKAGE)
             } catch (e: CancellationException) {
                 state.value = DownloadState.Idle
                 throw e
@@ -141,7 +156,11 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
                             Log.d(TAG, "Spoke ${text.length} chars in $ms ms at ${speed}x (${text.length * 1000 / ms.coerceAtLeast(1)} chars/s)")
                         }
                     }
-                    is SpeechSynthesizerResponse.Error -> throw IllegalStateException(messageFor(r.errorCode))
+                    is SpeechSynthesizerResponse.Error -> {
+                        // The voice was removed or never installed: stop listing it as ready.
+                        if (r.errorCode == TextToSpeech.ERROR_NOT_INSTALLED_YET) scope.launch { refreshStatus() }
+                        throw errorFor(r.errorCode, null)
+                    }
                     else -> Unit
                 }
             }
@@ -149,8 +168,19 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
             runCatching { client.stop() }
             throw e
         } catch (e: GenAiException) {
-            throw IllegalStateException(messageFor(e.errorCode), e)
+            throw errorFor(e.errorCode, e)
         }
+    }
+
+    /**
+     * Google's engine can fail the first sentence after it was stopped (for example when Murmur
+     * pauses for a notification sound), so those errors are worth retrying.
+     */
+    private fun errorFor(code: Int, cause: Throwable?): Exception = when (code) {
+        TextToSpeech.STOPPED, TextToSpeech.ERROR_SYNTHESIS, TextToSpeech.ERROR_SERVICE,
+        TextToSpeech.ERROR_OUTPUT, GenAiException.ErrorCode.BUSY,
+        -> TransientSpeechException(messageFor(code), cause)
+        else -> IllegalStateException(messageFor(code), cause)
     }
 
     /**
@@ -219,19 +249,52 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
     }
 
     private suspend fun refreshStatus() {
+        val engine = installedInEngine()
         val ready = mutableSetOf<String>()
+        val notInEngine = mutableListOf<String>()
         for ((voiceId, info) in infos) {
             val status = runCatching { client.checkStatus(info) }.getOrDefault(FeatureStatus.UNAVAILABLE)
-            if (status == FeatureStatus.AVAILABLE) ready += voiceId
+            if (status != FeatureStatus.AVAILABLE) continue
+            if (engine == null || info.name.lowercase(Locale.ROOT) in engine) ready += voiceId else notInEngine += info.name
+        }
+        if (notInEngine.isNotEmpty()) {
+            Log.w(TAG, "ML Kit reports these voices as available, but Google's speech app hasn't installed them: ${notInEngine.sorted()}")
         }
         _installed.value = ready
         prefs.edit { putStringSet(KEY_INSTALLED, ready) }
+    }
+
+    /**
+     * Lowercase names of the voices Google's speech app has installed, or null when it can't be
+     * asked. ML Kit finds a voice by this name (the speech app adds "-local") when it speaks.
+     */
+    private suspend fun installedInEngine(): Set<String>? = withTimeoutOrNull(ENGINE_TIMEOUT_MS) {
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { cont ->
+                var tts: TextToSpeech? = null
+                tts = TextToSpeech(appContext, { status ->
+                    val engine = tts
+                    val names = if (status == TextToSpeech.SUCCESS && engine != null) {
+                        runCatching { engine.voices }.getOrNull()
+                            ?.filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
+                            ?.map { it.name.removeSuffix("-local").lowercase(Locale.ROOT) }
+                            ?.toSet()
+                    } else {
+                        null
+                    }
+                    engine?.shutdown()
+                    if (cont.isActive) cont.resume(names)
+                }, ENGINE)
+                cont.invokeOnCancellation { tts.shutdown() }
+            }
+        }
     }
 
     private fun messageFor(e: Throwable): String =
         if (e is GenAiException) messageFor(e.errorCode) else e.message ?: "Google voice error"
 
     private fun messageFor(code: Int): String = when (code) {
+        TextToSpeech.ERROR_NOT_INSTALLED_YET -> "This Google voice isn't installed on this phone. Choose another voice."
         GenAiException.ErrorCode.BUSY -> "Google voices are busy. Try again in a moment."
         GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED ->
             "Google voices reached their daily usage limit. Choose another voice or try again tomorrow."
@@ -246,6 +309,10 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         const val ID = "mlkit"
         private const val TAG = "MlKitVoices"
         private const val KEY_INSTALLED = "installed"
+        private const val ENGINE = "com.google.android.tts"
+        private const val ENGINE_TIMEOUT_MS = 5_000L
+        private const val NOT_INSTALLED_PACKAGE =
+            "These voices aren't installed in Google's Speech Recognition & Synthesis app."
 
         /** Locales documented for ML Kit GenAI Text-to-Speech 1.0.0-alpha1. */
         private val LOCALES = listOf(

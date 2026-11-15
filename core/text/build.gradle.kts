@@ -18,5 +18,7 @@ dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.jsoup)
     implementation(libs.readability4j)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.gfm.tables)
     testImplementation(libs.junit)
 }

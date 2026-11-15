@@ -21,7 +21,8 @@ interface SiteHandler {
     /** The API address to fetch for [url], or null when this handler doesn't apply. */
     fun apiUrl(url: String): String?
 
-    fun parse(url: String, body: String, options: ExtractOptions): WebArticle
+    /** @param tables describes tables in [TableMode.SUMMARIZE]. */
+    fun parse(url: String, body: String, options: ExtractOptions, tables: TableSummarizer = TableReader): WebArticle
 }
 
 object SiteHandlers {
@@ -64,7 +65,7 @@ object WikipediaHandler : SiteHandler {
         return "https://$lang.wikipedia.org/api/rest_v1/page/html/$title?redirect=true"
     }
 
-    override fun parse(url: String, body: String, options: ExtractOptions): WebArticle {
+    override fun parse(url: String, body: String, options: ExtractOptions, tables: TableSummarizer): WebArticle {
         val m = PAGE.find(url)
         val lang = m?.groupValues?.get(1)?.lowercase() ?: "en"
         val html = Jsoup.parse(body, url)
@@ -84,7 +85,7 @@ object WikipediaHandler : SiteHandler {
             val headingText = heading?.text()?.trim()
             if (headingText != null && headingText.lowercase() in END_SECTIONS) continue
             heading?.remove()
-            ArticleShaper.applyOptions(section, options)
+            ArticleShaper.applyOptions(section, options, tables)
             if (i == 0 || headingText == null) {
                 val lines = ArticleShaper.clean(HtmlParagraphs.extract(section))
                 if (chapters.isEmpty()) chapters += Chapter(null, lead + lines)
@@ -121,7 +122,7 @@ object RedditHandler : SiteHandler {
         return "https://www.reddit.com/comments/$id.json?raw_json=1&sort=top&limit=60&depth=${SiteHandlers.MAX_DEPTH + 1}"
     }
 
-    override fun parse(url: String, body: String, options: ExtractOptions): WebArticle {
+    override fun parse(url: String, body: String, options: ExtractOptions, tables: TableSummarizer): WebArticle {
         val root = SiteHandlers.json.parseToJsonElement(body).jsonArray
         val post = root[0].jsonObject.data().children().first().data()
         val title = post.str("title") ?: "Reddit post"
@@ -185,7 +186,7 @@ object HackerNewsHandler : SiteHandler {
     override fun apiUrl(url: String): String? =
         ITEM.find(url)?.groupValues?.get(1)?.let { "https://hn.algolia.com/api/v1/items/$it" }
 
-    override fun parse(url: String, body: String, options: ExtractOptions): WebArticle {
+    override fun parse(url: String, body: String, options: ExtractOptions, tables: TableSummarizer): WebArticle {
         val item = SiteHandlers.json.parseToJsonElement(body).jsonObject
         val author = item.str("author")
         val title = item.str("title") ?: author?.let { "Comment by $it on Hacker News" } ?: "Hacker News discussion"

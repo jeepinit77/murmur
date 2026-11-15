@@ -22,7 +22,7 @@ android {
     }
 
     // foss: open-source voices only (sherpa-onnx). play: also offers Google's on-device voices
-    // through ML Kit, a proprietary library, on phones that support them.
+    // and Gemini Nano table summaries through ML Kit, a proprietary library, on phones that support them.
     flavorDimensions += "distribution"
     productFlavors {
         create("play") {
@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.guava)
     debugImplementation(libs.androidx.compose.ui.tooling)
     "playImplementation"(libs.mlkit.genai.tts)
+    "playImplementation"(libs.mlkit.genai.prompt)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }

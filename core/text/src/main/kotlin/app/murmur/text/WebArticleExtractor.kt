@@ -8,6 +8,8 @@ import app.murmur.web.PageMetadata
 import app.murmur.web.Pagination
 import app.murmur.web.PaywallDetector
 import app.murmur.web.QualityCheck
+import app.murmur.web.TableReader
+import app.murmur.web.TableSummarizer
 import app.murmur.web.UrlNormalizer
 import app.murmur.web.WebArticle
 import net.dankito.readability4j.Readability4J
@@ -27,6 +29,7 @@ object WebArticleExtractor {
         options: ExtractOptions = ExtractOptions(),
         titleHint: String? = null,
         headerLanguage: String? = null,
+        tables: TableSummarizer = TableReader,
     ): WebArticle {
         val raw = Jsoup.parse(html, url)
         val meta = PageMetadata.read(raw)
@@ -36,7 +39,7 @@ object WebArticleExtractor {
         cleaned.body()?.let {
             BoilerplateStripper.stripDom(it)
             // Before Readability, which drops figures, short code notices and some tables.
-            ArticleShaper.applyOptions(it, options)
+            ArticleShaper.applyOptions(it, options, tables)
         }
         val article = runCatching { Readability4J(url, cleaned.outerHtml()).parse() }.getOrNull()
         val content = article?.content?.takeIf { it.isNotBlank() && Jsoup.parseBodyFragment(it).text().length > 200 }

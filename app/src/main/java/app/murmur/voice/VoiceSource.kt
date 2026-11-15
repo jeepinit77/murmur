@@ -72,6 +72,12 @@ interface PcmVoiceSource : VoiceSource {
 }
 
 /** Plays audio itself (Google voices, which play through Google's speech app). */
+/**
+ * A failure that is likely to clear up if the same sentence is tried again, such as the speech
+ * engine still settling after it was stopped for an interruption.
+ */
+class TransientSpeechException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+
 interface PlayingVoiceSource : VoiceSource {
     /**
      * Speaks [text] at [speed] (1 = normal) and returns when it has finished. [onStart] is called

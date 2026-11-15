@@ -141,10 +141,34 @@ class WebImportTest {
         assertTrue("End of table." in read)
     }
 
-    @Test fun largeTablesAreDescribed() {
+    @Test fun largeTablesAreReadInFull() {
         val rows = (1..20).joinToString("") { "<tr><td>Row $it</td><td>$it</td><td>x</td></tr>" }
         val table = org.jsoup.Jsoup.parse("<table><tr><th>Name</th><th>Value</th><th>Note</th></tr>$rows</table>").selectFirst("table")!!
-        assertEquals(listOf("Table with 20 rows and 3 columns.", "Columns: Name, Value, Note."), TableReader.describe(table))
+        val out = TableReader.describe(table)
+        assertEquals("Table with 20 rows.", out.first())
+        assertEquals("Name: Row 1. Value: 1. Note: x.", out[1])
+        assertEquals("Name: Row 20. Value: 20. Note: x.", out[20])
+        assertEquals("End of table.", out.last())
+        assertEquals(22, out.size)
+    }
+
+    @Test fun veryLongTablesStopAfterTheRowLimit() {
+        val rows = (1..130).joinToString("") { "<tr><td>Row $it</td><td>$it</td></tr>" }
+        val table = org.jsoup.Jsoup.parse("<table><caption>Big</caption><tr><th>Name</th><th>Value</th></tr>$rows</table>").selectFirst("table")!!
+        val out = TableReader.describe(table)
+        assertEquals("Table with 130 rows: Big.", out.first())
+        assertEquals("Name: Row 100. Value: 100.", out[100])
+        assertEquals(listOf("30 more rows not read.", "End of table."), out.takeLast(2))
+    }
+
+    @Test fun wideTablesReadEachValueAfterItsHeading() {
+        val head = (1..7).joinToString("") { "<th>H$it</th>" }
+        val row = (1..7).joinToString("") { "<td>v$it</td>" }
+        val table = org.jsoup.Jsoup.parse("<table><tr>$head</tr><tr>$row</tr></table>").selectFirst("table")!!
+        assertEquals(
+            listOf("Table.", "H1: v1. H2: v2. H3: v3. H4: v4. H5: v5. H6: v6. H7: v7.", "End of table."),
+            TableReader.describe(table),
+        )
     }
 
     @Test fun codeBlocksFollowTheCodeSetting() {

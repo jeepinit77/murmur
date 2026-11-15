@@ -13,6 +13,7 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import app.murmur.settings.Settings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -25,11 +26,11 @@ import kotlinx.coroutines.launch
  * moves roughly with speech and scrubbing it jumps to the matching sentence.
  */
 @OptIn(UnstableApi::class)
-class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBasePlayer(Looper.getMainLooper()) {
+class SpeechPlayer(private val reader: Reader, private val settings: Settings, scope: CoroutineScope) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     init {
         scope.launch {
-            combine(reader.state, reader.content) { s, c -> s to c }.collect { invalidateState() }
+            combine(reader.state, reader.content, settings.rewindSeconds) { s, c, _ -> s to c }.collect { invalidateState() }
         }
     }
 
@@ -56,7 +57,7 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
             .setAvailableCommands(commands)
             .setPlayWhenReady(s.playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setPlaybackParameters(PlaybackParameters(s.speed))
-            .setSeekBackIncrementMs(SKIP_MS)
+            .setSeekBackIncrementMs(settings.rewindSeconds.value * 1000L)
             .setSeekForwardIncrementMs(SKIP_MS)
 
         if (s.docId == null) {
@@ -65,6 +66,7 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
 
         val subtitle = when {
             s.error != null -> s.error
+            s.playWhenReady && s.buffering -> "Preparing audio…"
             s.segmentCount > 0 && content != null -> {
                 val remaining = content.charOffsets.last() - content.charOffsets[s.currentIndex.coerceIn(0, content.segments.size)]
                 "Sentence ${s.currentIndex + 1} of ${s.segmentCount} · ${timeLeft(remaining, s.speed)}"
@@ -118,7 +120,7 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
             Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> reader.next()
             Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> reader.previous()
             Player.COMMAND_SEEK_FORWARD -> reader.skipSeconds((SKIP_MS / 1000).toInt())
-            Player.COMMAND_SEEK_BACK -> reader.skipSeconds(-(SKIP_MS / 1000).toInt())
+            Player.COMMAND_SEEK_BACK -> reader.skipSeconds(-settings.rewindSeconds.value)
             else -> if (content != null && positionMs != C.TIME_UNSET) {
                 reader.seekTo(content.indexForChar(charsForMs(positionMs)))
             }
@@ -134,16 +136,6 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
     override fun handleRelease(): ListenableFuture<*> = Futures.immediateVoidFuture()
 
     private fun msForChars(chars: Int): Long = (chars * 1000f / Reader.CHARS_PER_SECOND).toLong()
-
-    /** "12 min left" for the remaining characters at the current speed. */
-    private fun timeLeft(chars: Int, speed: Float): String {
-        val minutes = chars / (Reader.CHARS_PER_SECOND * 60f * speed.coerceAtLeast(0.1f))
-        return when {
-            minutes < 1f -> "Less than 1 min left"
-            minutes < 60f -> "${minutes.roundToInt()} min left"
-            else -> "${(minutes / 60).toInt()} hr ${(minutes % 60).roundToInt()} min left"
-        }
-    }
 
     private fun charsForMs(ms: Long): Int = (ms * Reader.CHARS_PER_SECOND / 1000f).toInt()
 
@@ -164,4 +156,14 @@ class SessionPlayer(player: SpeechPlayer, private val reader: Reader) : Forwardi
     override fun seekToPreviousMediaItem() = reader.previous()
     override fun hasNextMediaItem() = true
     override fun hasPreviousMediaItem() = true
+}
+
+/** "12 min left" for [chars] of text still to read at [speed]. */
+fun timeLeft(chars: Int, speed: Float): String {
+    val minutes = chars / (Reader.CHARS_PER_SECOND * 60f * speed.coerceAtLeast(0.1f))
+    return when {
+        minutes < 1f -> "Less than 1 min left"
+        minutes < 60f -> "${minutes.roundToInt()} min left"
+        else -> "${(minutes / 60).toInt()} hr ${(minutes % 60).roundToInt()} min left"
+    }
 }

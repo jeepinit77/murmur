@@ -32,6 +32,7 @@ object ShareNotifications {
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(openApp(context, MainActivity.ROUTE_NOW_PLAYING))
+            .addAction(0, context.getString(R.string.open_murmur), openApp(context, MainActivity.ROUTE_NOW_PLAYING))
             .addAction(0, context.getString(R.string.cancel), cancel)
             .build()
         notify(context, PROGRESS_ID, n)

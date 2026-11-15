@@ -17,6 +17,7 @@ internal object ArticleShaper {
     private val IMAGE_FILE = Regex("""\.(jpe?g|png|gif|webp|svg|avif)$""", RegexOption.IGNORE_CASE)
     private val GENERIC_ALT = setOf("image", "photo", "picture", "img", "graphic", "illustration", "thumbnail", "logo", "icon")
 
+    /** @param tables describes tables in [TableMode.SUMMARIZE]; [TableMode.READ] always uses [TableReader]. */
     fun applyOptions(root: Element, options: ExtractOptions, tables: TableSummarizer = TableReader) {
         applyCode(root, options.code)
         applyTables(root, options.tables, tables)
@@ -65,6 +66,10 @@ internal object ArticleShaper {
         return Chapter(title, body)
     }
 
+    /** Removes the generated mark from paragraphs, for sources that skip the web clutter rules. */
+    fun unmark(raw: List<String>): List<String> =
+        raw.map { p -> if (p.firstOrNull() == GENERATED_MARK) p.drop(1).trim() else p }.filter { it.isNotEmpty() }
+
     /** Drops clutter and pronunciation notes; keeps heading marks, removes generated marks. */
     fun clean(raw: List<String>): List<String> = raw.mapNotNull { p ->
         when (p.firstOrNull()) {
@@ -75,7 +80,7 @@ internal object ArticleShaper {
     }
 
     /** Replaces [target] with one generated paragraph per entry of [lines]. */
-    private fun replaceWithParagraphs(target: Element, lines: List<String>) {
+    internal fun replaceWithParagraphs(target: Element, lines: List<String>) {
         lines.forEach { target.before(Element("p").text("$GENERATED_MARK$it")) }
         target.remove()
     }
@@ -111,17 +116,8 @@ internal object ArticleShaper {
         }
     }
 
-    private fun applyTables(root: Element, mode: TableMode, summarizer: TableSummarizer) {
-        root.select("table").forEach { table ->
-            if (table.parent() == null || TableReader.isLayout(table)) return@forEach
-            // Nested inside a data table that has already been handled.
-            if (table.parents().any { it.normalName() == "table" && !TableReader.isLayout(it) }) return@forEach
-            when (mode) {
-                TableMode.SKIP -> table.remove()
-                TableMode.READ -> replaceWithParagraphs(table, summarizer.describe(table))
-            }
-        }
-    }
+    private fun applyTables(root: Element, mode: TableMode, summarizer: TableSummarizer) =
+        TableShaping.apply(root, mode, summarizer)
 
     private fun applyCaptions(root: Element, read: Boolean) {
         if (!read) {
@@ -138,6 +134,27 @@ internal object ArticleShaper {
             val alt = img.attr("alt").trim()
             val meaningful = alt.split(Regex("\\s+")).size >= 3 && !IMAGE_FILE.containsMatchIn(alt) && alt.lowercase() !in GENERIC_ALT
             if (meaningful) replaceWithParagraphs(img, listOf("Image: ${alt.trimEnd('.')}."))
+        }
+    }
+}
+
+/** Applies the Tables setting to data tables in any HTML: web pages, pasted Markdown, HTML files, EPUBs. */
+object TableShaping {
+    /**
+     * Skips, reads or summarizes each data table in [root] according to [mode]. Layout tables are
+     * left as ordinary text. Generated paragraphs carry a mark; remove it with [ArticleShaper.unmark]
+     * or [ArticleShaper.clean] after [app.murmur.text.HtmlParagraphs.extract].
+     */
+    fun apply(root: Element, mode: TableMode, summarizer: TableSummarizer = TableReader) {
+        root.select("table").forEach { table ->
+            if (table.parent() == null || TableReader.isLayout(table)) return@forEach
+            // Nested inside a data table that has already been handled.
+            if (table.parents().any { it.normalName() == "table" && !TableReader.isLayout(it) }) return@forEach
+            when (mode) {
+                TableMode.SKIP -> table.remove()
+                TableMode.READ -> ArticleShaper.replaceWithParagraphs(table, TableReader.describe(table))
+                TableMode.SUMMARIZE -> ArticleShaper.replaceWithParagraphs(table, summarizer.describe(table))
+            }
         }
     }
 }

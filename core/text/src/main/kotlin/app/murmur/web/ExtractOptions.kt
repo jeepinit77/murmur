@@ -2,7 +2,11 @@ package app.murmur.web
 
 import app.murmur.text.Document
 
-enum class TableMode { SKIP, READ }
+/**
+ * [READ] reads small tables row by row and describes large ones. [SUMMARIZE] uses the
+ * [TableSummarizer] passed to the extractor (an on-device model in the play build), falling back to [READ].
+ */
+enum class TableMode { SKIP, READ, SUMMARIZE }
 
 enum class CodeMode { SKIP, NOTICE, READ }
 
@@ -15,6 +19,8 @@ data class ExtractOptions(
     /** Read figure captions and meaningful image descriptions. */
     val readCaptions: Boolean = false,
     val tables: TableMode = TableMode.SKIP,
+    /** In [TableMode.SUMMARIZE], announce each summary as "Table summary by AI". */
+    val labelAiSummaries: Boolean = false,
     val code: CodeMode = CodeMode.SKIP,
 ) {
     companion object {

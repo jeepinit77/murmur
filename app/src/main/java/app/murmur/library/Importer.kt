@@ -5,9 +5,14 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import app.murmur.text.Document
 import app.murmur.text.EpubParser
-import app.murmur.text.HtmlParagraphs
+import app.murmur.settings.Settings
+import app.murmur.text.HtmlText
 import app.murmur.text.PdfTextCleaner
 import app.murmur.text.PlainText
+import app.murmur.web.TableAi
+import app.murmur.web.TableMode
+import app.murmur.web.TableSummaries
+import app.murmur.web.TableSummarizer
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -29,22 +34,36 @@ class ImportException(
     val httpStatus: Int? = null,
 ) : IOException(message)
 
-/** Converts anything the user shares or opens into a [Document]. */
-class Importer(private val context: Context) {
+/**
+ * Converts anything the user shares or opens into a [Document]. Tables follow the Tables setting
+ * in every format that keeps them (pasted Markdown, HTML, EPUB); [tableAi] summarizes them.
+ */
+class Importer(
+    private val context: Context,
+    private val settings: Settings,
+    private val tableAi: TableAi? = null,
+) {
 
     @Volatile private var pdfBoxReady = false
 
     /** Shared or pasted text. Links are handled by [Imports.link] before this is called. */
     suspend fun fromText(text: String, subject: String? = null): Imported {
-        val doc = PlainText.toDocument(text, subject)
+        val doc = withTables { mode, tables -> PlainText.toDocument(text, subject, mode, tables) }
         if (doc.isEmpty) throw ImportException("Nothing to read")
         return Imported(doc, "Shared text", KIND_TEXT)
     }
 
     suspend fun fromHtml(html: String, subject: String?): Imported {
-        val paragraphs = HtmlParagraphs.extract(Jsoup.parse(html).body())
-        val doc = PlainText.toDocument(paragraphs.joinToString("\n\n"), subject)
+        val doc = withTables { mode, tables -> HtmlText.toDocument(Jsoup.parse(html).body(), subject, mode, tables) }
         return Imported(doc, "Shared text", KIND_TEXT)
+    }
+
+    /** Runs [parse] off the main thread with the Tables setting, summarizing tables when that's chosen and possible. */
+    private suspend fun withTables(parse: (TableMode, TableSummarizer) -> Document): Document {
+        val options = settings.extractOptions()
+        return TableSummaries.extract(options, tableAi, defer = { doc, later -> doc.copy(pendingTables = later) }) { tables ->
+            withContext(Dispatchers.Default) { parse(options.tables, tables) }
+        }
     }
 
     suspend fun fromUri(uri: Uri, mimeHint: String? = null): Imported = withContext(Dispatchers.IO) {
@@ -60,7 +79,7 @@ class Importer(private val context: Context) {
                 val tmp = File(context.cacheDir, "import.epub")
                 open().use { input -> tmp.outputStream().use { input.copyTo(it) } }
                 try {
-                    val doc = EpubParser.parse(tmp)
+                    val doc = withTables { mode, tables -> EpubParser.parse(tmp, mode, tables) }
                     if (doc.isEmpty) throw ImportException("This book has no readable text (it may be DRM-protected)")
                     Imported(doc, name, KIND_EPUB)
                 } finally {
@@ -71,7 +90,7 @@ class Importer(private val context: Context) {
                 fromHtml(open().use { it.readBytes().toString(Charsets.UTF_8) }, name.substringBeforeLast('.'))
             else -> {
                 val text = open().use { it.readBytes().toString(Charsets.UTF_8) }
-                val doc = PlainText.toDocument(text, name.substringBeforeLast('.'))
+                val doc = withTables { mode, tables -> PlainText.toDocument(text, name.substringBeforeLast('.'), mode, tables) }
                 if (doc.isEmpty) throw ImportException("Nothing to read in $name")
                 Imported(doc, name, KIND_TEXT)
             }

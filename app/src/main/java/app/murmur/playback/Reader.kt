@@ -22,6 +22,7 @@ import app.murmur.text.SentenceSegmenter
 import app.murmur.text.SpeechText
 import app.murmur.voice.PcmVoiceSource
 import app.murmur.voice.PlayingVoiceSource
+import app.murmur.voice.TransientSpeechException
 import app.murmur.voice.Voice
 import app.murmur.voice.VoiceSources
 import kotlinx.coroutines.CancellationException
@@ -100,6 +101,11 @@ class Reader(
 
     private val segmenter = SentenceSegmenter()
     private val queue = ArrayDeque<String>()
+    /** Notifications waiting to be read after the one being read now. */
+    private val interjections = ArrayDeque<Pair<String, Document>>()
+    /** Where to go back to after reading notifications. */
+    private var resumeAfter: Resume? = null
+    private class Resume(val docId: String, val index: Int, val play: Boolean)
     private var playJob: Job? = null
     private var sleepJob: Job? = null
     @Volatile private var track: AudioTrack? = null
@@ -143,19 +149,27 @@ class Reader(
 
     /** Loads a document (segmenting off the main thread) and optionally starts speaking. */
     suspend fun open(docId: String, document: Document, startIndex: Int? = null, autoplay: Boolean) {
+        if (!isEphemeral(docId)) {
+            // Opening something else ends any notification reading and its resume point.
+            resumeAfter = null
+            interjections.clear()
+        }
         if (_content.value?.docId == docId) {
             if (autoplay) play()
             return
         }
         stopAudio()
+        // Coming straight from the "Preparing" placeholder: stay in the loading state so the
+        // loading indicator and sound carry on without a break until the first audio.
+        val stillLoading = autoplay && _state.value.docId == PREPARING_ID
         val segments = withContext(Dispatchers.Default) { segmenter.segment(document) }
         val content = ReaderContent(docId, document, segments)
         _content.value = content
-        val start = (startIndex ?: library.progressOf(docId)).let { if (it >= segments.size) 0 else it }
+        val start = (startIndex ?: if (isEphemeral(docId)) 0 else library.progressOf(docId)).let { if (it >= segments.size) 0 else it }
         _state.update {
             it.copy(
                 docId = docId, title = document.title, segmentCount = segments.size, currentIndex = start,
-                playWhenReady = false, buffering = false, ended = false, error = null,
+                playWhenReady = stillLoading, buffering = stillLoading, ended = false, error = null,
                 notice = languageNotice(document),
             )
         }
@@ -197,6 +211,25 @@ class Reader(
         return true
     }
 
+    /**
+     * Reads [document] (a notification) now, then goes back to what was open at the same sentence,
+     * playing again only if it was playing. Notifications arriving meanwhile are read in turn.
+     * [docId] must start with [EPHEMERAL_PREFIX]; nothing about it is saved to the library.
+     */
+    suspend fun interject(docId: String, document: Document) {
+        require(isEphemeral(docId))
+        val cur = _content.value
+        val s = _state.value
+        if (cur != null && isEphemeral(cur.docId) && s.playWhenReady && !s.ended) {
+            interjections.addLast(docId to document)
+            return
+        }
+        if (cur != null && !isEphemeral(cur.docId) && s.docId == cur.docId) {
+            resumeAfter = Resume(cur.docId, s.currentIndex, s.playWhenReady && !s.ended)
+        }
+        open(docId, document, startIndex = 0, autoplay = true)
+    }
+
     fun enqueue(docId: String) {
         queue.addLast(docId)
         _state.update { it.copy(queueSize = queue.size) }
@@ -209,8 +242,10 @@ class Reader(
 
     fun play() {
         val content = _content.value ?: return
-        if (content.segments.isEmpty()) return
-        if (!requestFocus()) return
+        if (content.segments.isEmpty() || !requestFocus()) {
+            _state.update { it.copy(playWhenReady = false, buffering = false) }
+            return
+        }
         val from = if (_state.value.ended) 0 else _state.value.currentIndex
         _state.update { it.copy(playWhenReady = true, ended = false, error = null, currentIndex = from) }
         startLoop(content, from)
@@ -228,7 +263,7 @@ class Reader(
         val content = _content.value ?: return
         val i = index.coerceIn(0, (content.segments.size - 1).coerceAtLeast(0))
         _state.update { it.copy(currentIndex = i, ended = false) }
-        library.setProgress(content.docId, i)
+        saveProgress(content.docId, i)
         if (_state.value.playWhenReady) startLoop(content, i)
     }
 
@@ -379,7 +414,7 @@ class Reader(
                 if (chunk.index != _state.value.currentIndex || _state.value.buffering) {
                     withContext(Dispatchers.Main) {
                         _state.update { it.copy(currentIndex = chunk.index, buffering = false) }
-                        library.setProgress(content.docId, chunk.index)
+                        saveProgress(content.docId, chunk.index)
                     }
                 }
                 written += writeBlocking(t, chunk.samples)
@@ -406,18 +441,41 @@ class Reader(
             if (!isSpeakable(text)) continue
             if (i != _state.value.currentIndex) {
                 _state.update { it.copy(currentIndex = i) }
-                library.setProgress(content.docId, i)
+                saveProgress(content.docId, i)
             }
-            source.speak(voice, text, _state.value.speed) {
-                if (_state.value.buffering) _state.update { it.copy(buffering = false) }
-            }
+            speakWithRetry(source, voice, text)
             if (seg.endsParagraph && pausePara > 0) delay(pausePara.toLong())
+        }
+    }
+
+    /** Tries a sentence again a few times when the engine reports a temporary failure. */
+    private suspend fun speakWithRetry(source: PlayingVoiceSource, voice: Voice, text: String) {
+        var attempt = 0
+        while (true) {
+            try {
+                source.speak(voice, text, _state.value.speed) {
+                    if (_state.value.buffering) _state.update { it.copy(buffering = false) }
+                }
+                return
+            } catch (e: TransientSpeechException) {
+                if (attempt >= RETRY_DELAYS_MS.size) throw e
+                Log.w(TAG, "Speech failed, trying again: ${e.message}")
+                delay(RETRY_DELAYS_MS[attempt++])
+            }
         }
     }
 
     private fun isSpeakable(text: String) = text.isNotBlank() && text.any { it.isLetterOrDigit() }
 
+    private fun saveProgress(docId: String, index: Int) {
+        if (!isEphemeral(docId)) library.setProgress(docId, index)
+    }
+
     private suspend fun onEnded(content: ReaderContent) {
+        if (isEphemeral(content.docId)) {
+            onNotificationEnded()
+            return
+        }
         library.setProgress(content.docId, 0)
         val nextId = queue.removeFirstOrNull()
         _state.update { it.copy(queueSize = queue.size) }
@@ -429,6 +487,33 @@ class Reader(
         _state.update { it.copy(playWhenReady = false, buffering = false, ended = true, currentIndex = 0) }
         unregisterNoisy()
         abandonFocus()
+    }
+
+    /** After a notification: the next notification, or back to what was open before. */
+    private fun onNotificationEnded() {
+        val next = interjections.removeFirstOrNull()
+        if (next != null) {
+            // Launched separately: opening cancels the current play job, which is this one.
+            scope.launch { open(next.first, next.second, startIndex = 0, autoplay = true) }
+            return
+        }
+        val back = resumeAfter
+        resumeAfter = null
+        scope.launch {
+            val doc = back?.let { library.load(it.docId) }
+            if (back != null && doc != null) {
+                open(back.docId, doc, startIndex = back.index, autoplay = back.play)
+                if (!back.play) {
+                    unregisterNoisy()
+                    abandonFocus()
+                }
+            } else {
+                stopAudio()
+                abandonFocus()
+                _content.value = null
+                _state.update { ReaderState(speed = it.speed) }
+            }
+        }
     }
 
     private suspend fun writeBlocking(t: AudioTrack, samples: FloatArray): Long {
@@ -555,8 +640,12 @@ class Reader(
     companion object {
         private const val TAG = "MurmurReader"
         const val PREPARING_ID = "__preparing__"
+        /** Ids of notifications being read; never saved to the library. */
+        const val EPHEMERAL_PREFIX = "notif:"
+        fun isEphemeral(docId: String) = docId.startsWith(EPHEMERAL_PREFIX)
         const val CHARS_PER_SECOND = 15f
         private const val LOOKAHEAD = 4
         private const val MAX_MODEL_SPEED = 1.6f
+        private val RETRY_DELAYS_MS = longArrayOf(300, 800, 2000)
     }
 }

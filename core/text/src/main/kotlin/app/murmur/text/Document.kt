@@ -18,13 +18,46 @@ data class Document(
     val language: String? = null,
     /** True when the article looks cut off by a paywall or sign-in prompt. */
     val incomplete: Boolean = false,
+    /** Tables read row by row for now, to be summarized when the on-device model can run. */
+    val pendingTables: List<PendingTable> = emptyList(),
 ) {
     val isEmpty: Boolean get() = chapters.all { it.paragraphs.isEmpty() }
+
+    /**
+     * Replaces the first run of paragraphs equal to [old] with [new], or returns null when no
+     * chapter contains that run.
+     */
+    fun replaceParagraphs(old: List<String>, new: List<String>): Document? {
+        if (old.isEmpty()) return null
+        chapters.forEachIndexed { c, chapter ->
+            val p = chapter.paragraphs
+            for (start in 0..p.size - old.size) {
+                if (p.subList(start, start + old.size) == old) {
+                    val updated = chapter.copy(paragraphs = p.subList(0, start) + new + p.subList(start + old.size, p.size))
+                    return copy(chapters = chapters.toMutableList().also { it[c] = updated })
+                }
+            }
+        }
+        return null
+    }
 
     fun plainText(): String = chapters.joinToString("\n\n") { it.paragraphs.joinToString("\n\n") }
 
     fun wordCount(): Int = chapters.sumOf { c -> c.paragraphs.sumOf { ListeningTime.words(it) } }
 }
+
+/**
+ * A table that couldn't be summarized at import time, for example because the on-device model
+ * only runs while Murmur is on screen.
+ */
+@Serializable
+data class PendingTable(
+    /** The table as plain text for the model. */
+    val text: String,
+    val caption: String? = null,
+    /** The row-by-row paragraphs in the document now, replaced by the summary later. */
+    val paragraphs: List<String>,
+)
 
 @Serializable
 data class Chapter(

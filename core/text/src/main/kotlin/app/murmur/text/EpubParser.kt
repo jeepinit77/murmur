@@ -1,5 +1,9 @@
 package app.murmur.text
 
+import app.murmur.web.TableMode
+import app.murmur.web.TableReader
+import app.murmur.web.TableShaping
+import app.murmur.web.TableSummarizer
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
@@ -10,7 +14,8 @@ import java.util.zip.ZipFile
 /** Minimal EPUB 2/3 reader: container.xml → OPF → spine order → paragraphs per chapter. */
 object EpubParser {
 
-    fun parse(file: File): Document = ZipFile(file).use { zip ->
+    /** @param tables how data tables in the book are read; see [TableShaping]. */
+    fun parse(file: File, tables: TableMode = TableMode.READ, summarizer: TableSummarizer = TableReader): Document = ZipFile(file).use { zip ->
         fun read(path: String): String? =
             zip.getEntry(path)?.let { e -> zip.getInputStream(e).use { it.readBytes().toString(Charsets.UTF_8) } }
 
@@ -36,8 +41,9 @@ object EpubParser {
             val href = resolve(opfDir, item.attr("href"))
             val html = read(href) ?: return@mapNotNull null
             val body = Jsoup.parse(html).body()
-            val paragraphs = HtmlParagraphs.extract(body)
-            if (paragraphs.isEmpty()) null else Chapter(HtmlParagraphs.firstHeading(body), paragraphs)
+            val heading = HtmlParagraphs.firstHeading(body)
+            val paragraphs = HtmlText.paragraphs(body, tables, summarizer)
+            if (paragraphs.isEmpty()) null else Chapter(heading, paragraphs)
         }
         Document(
             title = title.ifBlank { file.nameWithoutExtension },

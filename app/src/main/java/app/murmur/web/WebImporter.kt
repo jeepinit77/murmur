@@ -6,6 +6,7 @@ import app.murmur.library.Imported
 import app.murmur.library.Importer
 import app.murmur.text.Chapter
 import app.murmur.text.Document
+import app.murmur.text.PendingTable
 import app.murmur.text.PlainText
 import app.murmur.text.WebArticleExtractor
 import kotlinx.coroutines.CancellationException
@@ -24,6 +25,8 @@ class WebImporter(
     private val fetcher: PageFetcher,
     private val renderer: WebViewRenderer,
     private val pdf: suspend (bytes: ByteArray, name: String) -> Document,
+    /** Summarizes tables in [TableMode.SUMMARIZE]; null where no on-device model is available. */
+    private val tableAi: TableAi? = null,
 ) {
 
     /**
@@ -40,7 +43,7 @@ class WebImporter(
 
         SiteHandlers.find(url)?.let { (handler, api) ->
             onStage(STAGE_LOADING)
-            fromHandler(handler, api, url, options)?.let { return done(it.document, keys, it.canonicalUrl, url) }
+            fromHandler(handler, api, url, options, onStage)?.let { return done(it.document, keys, it.canonicalUrl, url) }
         }
 
         onStage(STAGE_LOADING)
@@ -49,7 +52,7 @@ class WebImporter(
         // Short links (t.co, reddit.com/r/x/s/…) only reveal a supported site after the redirect.
         if (page.finalUrl != url) {
             SiteHandlers.find(page.finalUrl)?.let { (handler, api) ->
-                fromHandler(handler, api, page.finalUrl, options)?.let { return done(it.document, keys, it.canonicalUrl, page.finalUrl) }
+                fromHandler(handler, api, page.finalUrl, options, onStage)?.let { return done(it.document, keys, it.canonicalUrl, page.finalUrl) }
             }
         }
         when {
@@ -59,8 +62,9 @@ class WebImporter(
                 return WebImport(Imported(doc, page.finalUrl, Importer.KIND_PDF), keys.toList())
             }
             page.isPlainText -> {
-                val doc = withContext(Dispatchers.Default) {
-                    PlainText.toDocument(page.text(), titleHint ?: WebArticleExtractor.slugTitle(page.finalUrl))
+                val title = titleHint ?: WebArticleExtractor.slugTitle(page.finalUrl)
+                val doc = TableSummaries.extract(options, tableAi, { onStage(STAGE_TABLES) }, { d, later -> d.copy(pendingTables = later) }) { tables ->
+                    withContext(Dispatchers.Default) { PlainText.toDocument(page.text(), title, options.tables, tables) }
                 }
                 if (doc.isEmpty) throw ImportException(NO_TEXT)
                 return WebImport(Imported(doc, page.finalUrl, Importer.KIND_TEXT), keys.toList())
@@ -68,7 +72,7 @@ class WebImporter(
             !page.isHtml -> throw ImportException("This link isn't a web page or PDF")
         }
 
-        var article = extract(page.finalUrl, { page.text() }, options, titleHint, page.headerLanguage)
+        var article = extract(page.finalUrl, { page.text() }, options, titleHint, page.headerLanguage, onStage)
         if (article.quality.needsRender) {
             Log.i(TAG, "Rendering ${page.finalUrl}: ${article.quality.reason}")
             onStage(STAGE_RENDERING)
@@ -81,7 +85,7 @@ class WebImporter(
                 null
             }
             if (rendered != null) {
-                val second = extract(rendered.url, { rendered.html }, options, titleHint, page.headerLanguage)
+                val second = extract(rendered.url, { rendered.html }, options, titleHint, page.headerLanguage, onStage)
                 if (second.quality.score > article.quality.score) article = second
             }
         }
@@ -92,13 +96,32 @@ class WebImporter(
         return done(document, keys, article.canonicalUrl, page.finalUrl)
     }
 
-    private suspend fun extract(url: String, html: () -> String, options: ExtractOptions, hint: String?, lang: String?) =
-        withContext(Dispatchers.Default) { WebArticleExtractor.extract(url, html(), options, hint, lang) }
+    private suspend fun extract(
+        url: String,
+        html: () -> String,
+        options: ExtractOptions,
+        hint: String?,
+        lang: String?,
+        onStage: (String) -> Unit,
+    ): WebArticle {
+        val source by lazy(html)
+        return TableSummaries.extract(options, tableAi, { onStage(STAGE_TABLES) }, ::withPending) { tables ->
+            withContext(Dispatchers.Default) { WebArticleExtractor.extract(url, source, options, hint, lang, tables) }
+        }
+    }
 
-    private suspend fun fromHandler(handler: SiteHandler, api: String, url: String, options: ExtractOptions): WebArticle? =
+    private suspend fun fromHandler(
+        handler: SiteHandler,
+        api: String,
+        url: String,
+        options: ExtractOptions,
+        onStage: (String) -> Unit,
+    ): WebArticle? =
         try {
             val body = fetcher.fetch(api, PageFetcher.ACCEPT_JSON).text()
-            withContext(Dispatchers.Default) { handler.parse(url, body, options) }.takeIf { !it.document.isEmpty }
+            TableSummaries.extract(options, tableAi, { onStage(STAGE_TABLES) }, ::withPending) { tables ->
+                withContext(Dispatchers.Default) { handler.parse(url, body, options, tables) }
+            }.takeIf { !it.document.isEmpty }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -113,6 +136,7 @@ class WebImporter(
         val chapters = first.chapters.toMutableList()
         val seen = mutableSetOf(UrlNormalizer.key(article.document.url ?: ""), UrlNormalizer.key(next))
         val seenText = first.chapters.flatMap { it.paragraphs }.filter { it.length > 60 }.toMutableSet()
+        val pending = first.pendingTables.toMutableList()
         var pageNumber = 2
         val pageOptions = options.copy(spokenIntro = false)
         while (pageNumber <= MAX_PAGES) {
@@ -125,11 +149,12 @@ class WebImporter(
                 break
             }
             if (!page.isHtml) break
-            val more = extract(page.finalUrl, { page.text() }, pageOptions, null, null)
+            val more = extract(page.finalUrl, { page.text() }, pageOptions, null, null, onStage)
             val paragraphs = more.document.chapters.flatMap { it.paragraphs }
             val fresh = paragraphs.filter { it.length > 60 }
             if (fresh.isEmpty() || fresh.count { it in seenText } > fresh.size / 2) break
             seenText += fresh
+            pending += more.document.pendingTables
             val label = "Page $pageNumber"
             // Drop the repeated title at the start of each page.
             val pageChapters = more.document.chapters.mapIndexed { i, ch ->
@@ -142,8 +167,11 @@ class WebImporter(
             next = candidate
             pageNumber++
         }
-        return first.copy(chapters = chapters)
+        return first.copy(chapters = chapters, pendingTables = pending)
     }
+
+    private fun withPending(article: WebArticle, later: List<PendingTable>) =
+        article.copy(document = article.document.copy(pendingTables = later))
 
     private fun done(document: Document, keys: MutableSet<String>, canonical: String?, url: String): WebImport {
         canonical?.let { keys += UrlNormalizer.key(it) }
@@ -157,6 +185,7 @@ class WebImporter(
         private const val MIN_WORDS = 30
         const val STAGE_LOADING = "Loading page"
         const val STAGE_RENDERING = "Rendering page"
+        const val STAGE_TABLES = "Summarizing tables"
         const val NO_TEXT = "Couldn't find readable text on that page"
     }
 }

@@ -25,6 +25,7 @@ import app.murmur.web.UrlNormalizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicInteger
+import app.murmur.settings.SavedPageMode
 import app.murmur.settings.ShareMode
 import app.murmur.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.io.File
 
 /**
@@ -56,8 +60,12 @@ class PlaybackService : MediaSessionService() {
         val player = SessionPlayer(speechPlayer(this), c.reader)
         openPlayer = PendingIntent.getActivity(
             this, 0,
+            // Its own action, so Android never mistakes it for the task's launch intent and
+            // just brings the app forward without delivering the extras.
             Intent(this, MainActivity::class.java)
+                .setAction(ACTION_OPEN_PLAYER)
                 .putExtra(MainActivity.EXTRA_ROUTE, MainActivity.ROUTE_NOW_PLAYING)
+                .putExtra(MainActivity.EXTRA_SHOW_PLAYER, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -68,8 +76,16 @@ class PlaybackService : MediaSessionService() {
                 .build()
                 .apply { setSmallIcon(R.drawable.ic_notification) },
         )
-        val s = MediaSession.Builder(this, player).setSessionActivity(openPlayer).build()
+        val s = MediaSession.Builder(this, player)
+            .setSessionActivity(openPlayer)
+            .setCallback(MediaButtons.Callback(c.reader, c.settings))
+            .build()
         session = s
+        // Keep the Rewind and Speed buttons' icons in step with the settings.
+        scope.launch {
+            combine(c.settings.rewindSeconds, c.reader.state.map { it.speed }.distinctUntilChanged()) { r, sp -> r to sp }
+                .collect { (rewind, speed) -> s.setMediaButtonPreferences(MediaButtons.buttons(rewind, speed)) }
+        }
         // Media3 only attaches a session to the service (and so to the media notification) when
         // a controller binds. The share path never opens the UI, so no controller ever binds:
         // register it ourselves, otherwise the "Preparing" placeholder is never replaced.
@@ -90,6 +106,22 @@ class PlaybackService : MediaSessionService() {
                 intent.getIntExtra(ShareNotifications.EXTRA_DISMISS, 0).takeIf { it != 0 }
                     ?.let { ShareNotifications.cancel(this, it) }
                 SpeakRequest.fromServiceIntent(intent)?.let { enqueueRequest(it) }
+            }
+            ACTION_SPEAK_NOTIFICATION -> {
+                ServiceCompat.startForeground(
+                    this, NOTIFICATION_ID, preparingNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+                val c = container
+                val item = c.notificationInbox.take(intent.getIntExtra(EXTRA_BATCH, -1))
+                when {
+                    item == null -> stopIfIdle()
+                    !c.voices.hasAnyInstalled() -> {
+                        toast(getString(R.string.need_voice))
+                        stopIfIdle()
+                    }
+                    else -> scope.launch { c.reader.interject(item.first, item.second) }
+                }
             }
             ACTION_CANCEL_IMPORT -> {
                 importJob?.cancel()
@@ -129,6 +161,7 @@ class PlaybackService : MediaSessionService() {
         if (showInPlayer) c.reader.showPreparing(request.label())
         ShareNotifications.showProgress(this, request.label(), null)
         val onStage: (String) -> Unit = { stage -> ShareNotifications.showProgress(this, request.label(), stage) }
+        val importAgain = request.importAgain || c.settings.savedPageMode.value == SavedPageMode.IMPORT_AGAIN
         try {
             val outcome = when {
                 request.uri != null -> c.imports.save(c.importer.fromUri(request.uri, request.mime))
@@ -136,10 +169,10 @@ class PlaybackService : MediaSessionService() {
                     val f = File(request.textFile)
                     val text = f.readText()
                     f.delete()
-                    c.imports.text(text, request.subject, onStage)
+                    c.imports.text(text, request.subject, onStage, importAgain)
                 }
                 request.html != null -> c.imports.save(c.importer.fromHtml(request.html, request.subject))
-                else -> c.imports.text(request.text.orEmpty(), request.subject, onStage)
+                else -> c.imports.text(request.text.orEmpty(), request.subject, onStage, importAgain)
             }
             ShareNotifications.cancelProgress(this)
             if (queue) {
@@ -161,7 +194,8 @@ class PlaybackService : MediaSessionService() {
         } catch (e: Exception) {
             ShareNotifications.cancelProgress(this)
             val msg = e.message ?: getString(R.string.nothing_to_read)
-            if (showInPlayer) c.reader.showError(msg)
+            // The player plays the error sound itself when it shows the error.
+            if (showInPlayer) c.reader.showError(msg) else c.cues.playError()
             toast(msg)
             val link = request.linkUrl()
             when {
@@ -207,6 +241,10 @@ class PlaybackService : MediaSessionService() {
     companion object {
         const val ACTION_SPEAK = "app.murmur.action.SPEAK"
         const val ACTION_CANCEL_IMPORT = "app.murmur.action.CANCEL_IMPORT"
+        /** Reads a notification batch from the notification inbox. */
+        const val ACTION_SPEAK_NOTIFICATION = "app.murmur.action.SPEAK_NOTIFICATION"
+        private const val EXTRA_BATCH = "batch"
+        const val ACTION_OPEN_PLAYER = "app.murmur.action.OPEN_PLAYER"
         /** Same id Media3's DefaultMediaNotificationProvider uses, so its notification replaces ours. */
         private const val NOTIFICATION_ID = 1001
 
@@ -214,11 +252,18 @@ class PlaybackService : MediaSessionService() {
 
         /** One player per process, reused if the service is recreated. */
         fun speechPlayer(context: Context): SpeechPlayer =
-            sharedPlayer ?: SpeechPlayer(context.container.reader, context.container.appScope).also { sharedPlayer = it }
+            sharedPlayer ?: SpeechPlayer(context.container.reader, context.container.settings, context.container.appScope).also { sharedPlayer = it }
 
         fun speak(context: Context, request: SpeakRequest) {
             ContextCompat.startForegroundService(context, speakIntent(context, request))
         }
+
+        fun speakNotification(context: Context, batchId: Int) {
+            ContextCompat.startForegroundService(context, speakNotificationIntent(context, batchId))
+        }
+
+        fun speakNotificationIntent(context: Context, batchId: Int): Intent =
+            Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK_NOTIFICATION).putExtra(EXTRA_BATCH, batchId)
 
         fun speakIntent(context: Context, request: SpeakRequest): Intent =
             Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK).also { request.writeTo(context, it) }
@@ -234,6 +279,8 @@ data class SpeakRequest(
     val mime: String? = null,
     /** Large text is passed through a cache file to stay under the Binder size limit. */
     val textFile: String? = null,
+    /** For a link already in the library: fetch it again and replace the saved copy. */
+    val importAgain: Boolean = false,
 ) {
     fun label(): String = subject?.takeIf { it.isNotBlank() }
         ?: linkUrl()?.let { link -> SharedLink.parse(text.orEmpty())?.titleHint ?: UrlNormalizer.displayHost(link) }
@@ -246,6 +293,7 @@ data class SpeakRequest(
     fun writeTo(context: Context, intent: Intent) {
         subject?.let { intent.putExtra(EXTRA_SUBJECT, it) }
         mime?.let { intent.putExtra(EXTRA_MIME, it) }
+        if (importAgain) intent.putExtra(EXTRA_IMPORT_AGAIN, true)
         html?.let { intent.putExtra(EXTRA_HTML, it.take(MAX_INLINE)) }
         if (uri != null) {
             intent.putExtra(EXTRA_URI, uri)
@@ -271,6 +319,7 @@ data class SpeakRequest(
         private const val EXTRA_URI = "uri"
         private const val EXTRA_MIME = "mime"
         private const val EXTRA_TEXT_FILE = "text_file"
+        private const val EXTRA_IMPORT_AGAIN = "import_again"
         private const val MAX_INLINE = 200_000
 
         fun fromServiceIntent(intent: Intent): SpeakRequest? {
@@ -281,6 +330,7 @@ data class SpeakRequest(
                 uri = IntentCompat.getParcelableExtra(intent, EXTRA_URI, Uri::class.java),
                 mime = intent.getStringExtra(EXTRA_MIME),
                 textFile = intent.getStringExtra(EXTRA_TEXT_FILE),
+                importAgain = intent.getBooleanExtra(EXTRA_IMPORT_AGAIN, false),
             )
             return if (r.text == null && r.html == null && r.uri == null && r.textFile == null) null else r
         }
