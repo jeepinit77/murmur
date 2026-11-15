@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.container
 import app.murmur.notifications.NotificationReaderService
+import app.murmur.settings.AutoPlayRule
 import app.murmur.settings.AutoPlayScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,10 +61,7 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
     val readApps by s.readApps.collectAsStateWithLifecycle()
     val autoPlayApps by s.autoPlayApps.collectAsStateWithLifecycle()
     val seenApps by s.seenApps.collectAsStateWithLifecycle()
-    val autoPlay by s.notificationAutoPlay.collectAsStateWithLifecycle()
-    val headphonesOnly by s.autoPlayHeadphonesOnly.collectAsStateWithLifecycle()
-    val respectDnd by s.autoPlayRespectDnd.collectAsStateWithLifecycle()
-    val screen by s.autoPlayScreen.collectAsStateWithLifecycle()
+    val autoPlayRules by s.autoPlayRules.collectAsStateWithLifecycle()
 
     // Access can change in system settings while this screen is in the background.
     var hasAccess by remember { mutableStateOf(NotificationReaderService.hasAccess(context)) }
@@ -113,33 +111,6 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
 
             if (enabled) {
                 HorizontalDivider()
-                Section("Auto-play")
-                SwitchRow(
-                    title = "Auto-play notifications",
-                    description = "Read new notifications as soon as they arrive, for apps with Auto-play turned on below.",
-                    checked = autoPlay,
-                    onChange = s::setNotificationAutoPlay,
-                )
-                if (autoPlay) {
-                    SwitchRow(
-                        title = "Only with headphones or Bluetooth",
-                        description = "Auto-play only when audio goes to headphones, a Bluetooth device or a car.",
-                        checked = headphonesOnly,
-                        onChange = s::setAutoPlayHeadphonesOnly,
-                    )
-                    SwitchRow(
-                        title = "Respect Do Not Disturb",
-                        description = "Don't auto-play while Do Not Disturb, silent or vibrate mode is on.",
-                        checked = respectDnd,
-                        onChange = s::setAutoPlayRespectDnd,
-                    )
-                    Text("Screen", style = MaterialTheme.typography.titleSmall)
-                    RadioRow("Only when the screen is on", screen == AutoPlayScreen.SCREEN_ON) { s.setAutoPlayScreen(AutoPlayScreen.SCREEN_ON) }
-                    RadioRow("Only when the screen is off", screen == AutoPlayScreen.SCREEN_OFF) { s.setAutoPlayScreen(AutoPlayScreen.SCREEN_OFF) }
-                    RadioRow("Any time", screen == AutoPlayScreen.ANY) { s.setAutoPlayScreen(AutoPlayScreen.ANY) }
-                }
-
-                HorizontalDivider()
                 Section("Apps")
                 if (apps.isEmpty()) {
                     Text(
@@ -148,8 +119,16 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (apps.isNotEmpty()) {
+                    Text(
+                        "Turn on Auto-play for an app to read its notifications as soon as they arrive, without pressing Play.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 apps.forEach { app ->
                     val checked = app.pkg in readApps
+                    val autoPlay = checked && app.pkg in autoPlayApps
                     AppRow(
                         app = app,
                         checked = checked,
@@ -157,9 +136,13 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
                             s.setReadApp(app.pkg, on)
                             if (!on) s.setAutoPlayApp(app.pkg, false)
                         },
-                        autoPlay = if (autoPlay && checked) app.pkg in autoPlayApps else null,
+                        autoPlay = if (checked) autoPlay else null,
                         onAutoPlayChange = { on -> s.setAutoPlayApp(app.pkg, on) },
                     )
+                    if (autoPlay) {
+                        val rule = autoPlayRules[app.pkg] ?: AutoPlayRule()
+                        AutoPlayOptions(rule) { s.setAutoPlayRule(app.pkg, it) }
+                    }
                 }
             }
 
@@ -207,6 +190,29 @@ private fun AppRow(
                 Switch(checked = autoPlay, onCheckedChange = null)
             }
         }
+    }
+}
+
+/** One app's auto-play conditions, indented under its row. */
+@Composable
+private fun AutoPlayOptions(rule: AutoPlayRule, onChange: (AutoPlayRule) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(start = 56.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SwitchRow(
+            title = "Only with headphones or Bluetooth",
+            description = "Auto-play only when audio goes to headphones, a Bluetooth device or a car.",
+            checked = rule.headphonesOnly,
+            onChange = { onChange(rule.copy(headphonesOnly = it)) },
+        )
+        SwitchRow(
+            title = "Respect Do Not Disturb",
+            description = "Don't auto-play while Do Not Disturb, silent or vibrate mode is on.",
+            checked = rule.respectDnd,
+            onChange = { onChange(rule.copy(respectDnd = it)) },
+        )
+        Text("Screen", style = MaterialTheme.typography.titleSmall)
+        RadioRow("Only when the screen is on", rule.screen == AutoPlayScreen.SCREEN_ON) { onChange(rule.copy(screen = AutoPlayScreen.SCREEN_ON)) }
+        RadioRow("Only when the screen is off", rule.screen == AutoPlayScreen.SCREEN_OFF) { onChange(rule.copy(screen = AutoPlayScreen.SCREEN_OFF)) }
+        RadioRow("Any time", rule.screen == AutoPlayScreen.ANY) { onChange(rule.copy(screen = AutoPlayScreen.ANY)) }
     }
 }
 

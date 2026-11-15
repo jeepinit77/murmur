@@ -60,10 +60,17 @@ class MurmurApp : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_IMPORTS, getString(R.string.channel_imports), NotificationManager.IMPORTANCE_LOW),
         )
+        // Normal importance so these appear with other notifications, not under Silent. They're
+        // posted without sound or vibration, since the original notification already alerted.
+        // A channel's importance can't be raised later, so this replaces the earlier low channel.
+        nm.deleteNotificationChannel("notification_reading")
         nm.createNotificationChannel(
             NotificationChannel(
-                CHANNEL_NOTIFICATION_READING, getString(R.string.channel_notification_reading), NotificationManager.IMPORTANCE_LOW,
-            ),
+                CHANNEL_NOTIFICATION_READING, getString(R.string.channel_notification_reading), NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            },
         )
     }
 
@@ -71,7 +78,7 @@ class MurmurApp : Application() {
         const val CHANNEL_PLAYBACK = "playback"
         const val CHANNEL_IMPORTS = "imports"
         const val CHANNEL_DOWNLOADS = "downloads"
-        const val CHANNEL_NOTIFICATION_READING = "notification_reading"
+        const val CHANNEL_NOTIFICATION_READING = "notification_reading_items"
     }
 }
 

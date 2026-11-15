@@ -9,15 +9,16 @@ import android.os.PowerManager
 import app.murmur.settings.AutoPlayScreen
 import app.murmur.settings.Settings
 
-/** Decides whether a notification from [pkg] may be read without the user pressing Play. */
+/** Decides whether a notification from an app may be read without pressing Play, using that app's rule. */
 class AutoPlayPolicy(private val context: Context, private val settings: Settings) {
 
     fun allows(pkg: String): Boolean {
-        if (!settings.notificationAutoPlay.value || pkg !in settings.autoPlayApps.value) return false
-        if (settings.autoPlayHeadphonesOnly.value && !privateAudio()) return false
-        if (settings.autoPlayRespectDnd.value && quiet()) return false
+        if (pkg !in settings.autoPlayApps.value) return false
+        val rule = settings.autoPlayRule(pkg)
+        if (rule.headphonesOnly && !privateAudio()) return false
+        if (rule.respectDnd && quiet()) return false
         val screenOn = context.getSystemService(PowerManager::class.java).isInteractive
-        return when (settings.autoPlayScreen.value) {
+        return when (rule.screen) {
             AutoPlayScreen.SCREEN_ON -> screenOn
             AutoPlayScreen.SCREEN_OFF -> !screenOn
             AutoPlayScreen.ANY -> true

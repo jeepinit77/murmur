@@ -17,6 +17,26 @@ enum class SavedPageMode { ASK, RESUME, IMPORT_AGAIN }
 /** When notifications may be read automatically, depending on the screen. */
 enum class AutoPlayScreen { SCREEN_ON, SCREEN_OFF, ANY }
 
+/** One app's conditions for reading its notifications automatically. */
+data class AutoPlayRule(
+    val headphonesOnly: Boolean = false,
+    val respectDnd: Boolean = true,
+    val screen: AutoPlayScreen = AutoPlayScreen.SCREEN_ON,
+) {
+    fun encode() = "$headphonesOnly;$respectDnd;${screen.name}"
+
+    companion object {
+        fun decode(s: String?): AutoPlayRule {
+            val p = s?.split(';') ?: return AutoPlayRule()
+            return AutoPlayRule(
+                headphonesOnly = p.getOrNull(0)?.toBooleanStrictOrNull() ?: false,
+                respectDnd = p.getOrNull(1)?.toBooleanStrictOrNull() ?: true,
+                screen = runCatching { AutoPlayScreen.valueOf(p.getOrNull(2) ?: "") }.getOrDefault(AutoPlayScreen.SCREEN_ON),
+            )
+        }
+    }
+}
+
 /** Small preference store exposing each value as a StateFlow for Compose. */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE).also {
@@ -132,7 +152,10 @@ class Settings(context: Context) {
     private val _autoPlayApps = MutableStateFlow(prefs.getStringSet(KEY_NR_AUTOPLAY_APPS, null).orEmpty().toSet())
     /** Package names of the apps whose notifications are read as soon as they arrive. */
     val autoPlayApps: StateFlow<Set<String>> = _autoPlayApps.asStateFlow()
-    fun setAutoPlayApp(pkg: String, on: Boolean) = putSet(KEY_NR_AUTOPLAY_APPS, _autoPlayApps, pkg, on)
+    fun setAutoPlayApp(pkg: String, on: Boolean) {
+        putSet(KEY_NR_AUTOPLAY_APPS, _autoPlayApps, pkg, on)
+        if (on && pkg !in _autoPlayRules.value) _autoPlayRules.value = _autoPlayRules.value + (pkg to autoPlayRule(pkg))
+    }
 
     private val _seenApps = MutableStateFlow(prefs.getStringSet(KEY_NR_SEEN, null).orEmpty().toSet())
     /** Apps that have posted a notification since access was granted (package names only). */
@@ -141,23 +164,17 @@ class Settings(context: Context) {
         if (pkg !in _seenApps.value) putSet(KEY_NR_SEEN, _seenApps, pkg, true)
     }
 
-    private val _notificationAutoPlay = MutableStateFlow(prefs.getBoolean(KEY_NR_AUTOPLAY, false))
-    val notificationAutoPlay: StateFlow<Boolean> = _notificationAutoPlay.asStateFlow()
-    fun setNotificationAutoPlay(on: Boolean) = putBool(KEY_NR_AUTOPLAY, on, _notificationAutoPlay)
+    private val _autoPlayRules = MutableStateFlow(
+        _autoPlayApps.value.associateWith { AutoPlayRule.decode(prefs.getString("$KEY_NR_RULE$it", null)) },
+    )
+    /** When each app's notifications may be read automatically; only for apps in [autoPlayApps]. */
+    val autoPlayRules: StateFlow<Map<String, AutoPlayRule>> = _autoPlayRules.asStateFlow()
 
-    private val _autoPlayHeadphonesOnly = MutableStateFlow(prefs.getBoolean(KEY_NR_HEADPHONES, false))
-    val autoPlayHeadphonesOnly: StateFlow<Boolean> = _autoPlayHeadphonesOnly.asStateFlow()
-    fun setAutoPlayHeadphonesOnly(on: Boolean) = putBool(KEY_NR_HEADPHONES, on, _autoPlayHeadphonesOnly)
+    fun autoPlayRule(pkg: String): AutoPlayRule = _autoPlayRules.value[pkg] ?: AutoPlayRule.decode(prefs.getString("$KEY_NR_RULE$pkg", null))
 
-    private val _autoPlayRespectDnd = MutableStateFlow(prefs.getBoolean(KEY_NR_DND, true))
-    val autoPlayRespectDnd: StateFlow<Boolean> = _autoPlayRespectDnd.asStateFlow()
-    fun setAutoPlayRespectDnd(on: Boolean) = putBool(KEY_NR_DND, on, _autoPlayRespectDnd)
-
-    private val _autoPlayScreen = MutableStateFlow(enumPref(KEY_NR_SCREEN, AutoPlayScreen.SCREEN_ON))
-    val autoPlayScreen: StateFlow<AutoPlayScreen> = _autoPlayScreen.asStateFlow()
-    fun setAutoPlayScreen(m: AutoPlayScreen) {
-        _autoPlayScreen.value = m
-        prefs.edit { putString(KEY_NR_SCREEN, m.name) }
+    fun setAutoPlayRule(pkg: String, rule: AutoPlayRule) {
+        _autoPlayRules.value = _autoPlayRules.value + (pkg to rule)
+        prefs.edit { putString("$KEY_NR_RULE$pkg", rule.encode()) }
     }
 
     /** The home screen card suggesting notification reading was dismissed. */
@@ -257,10 +274,8 @@ class Settings(context: Context) {
         private const val KEY_NR_APPS = "notification_reading_apps"
         private const val KEY_NR_AUTOPLAY_APPS = "notification_autoplay_apps"
         private const val KEY_NR_SEEN = "notification_seen_apps"
-        private const val KEY_NR_AUTOPLAY = "notification_autoplay"
-        private const val KEY_NR_HEADPHONES = "notification_autoplay_headphones"
-        private const val KEY_NR_DND = "notification_autoplay_dnd"
-        private const val KEY_NR_SCREEN = "notification_autoplay_screen"
+        /** Followed by a package name. */
+        private const val KEY_NR_RULE = "notification_autoplay_rule_"
         private const val KEY_NR_TIP_DISMISSED = "notification_tip_dismissed"
     }
 }

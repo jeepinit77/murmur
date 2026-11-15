@@ -30,7 +30,7 @@ class NotificationInbox(
     fun offer(n: IncomingNotification) {
         val batch = batcher.offer(n) ?: return
         ReadNotifications.show(context, batch)
-        if (settings.notificationAutoPlay.value && batch.packageName in settings.autoPlayApps.value) {
+        if (batch.packageName in settings.autoPlayApps.value) {
             // Wait briefly so messages sent in quick succession are read together.
             autoPlayJobs.remove(batch.id)?.cancel()
             autoPlayJobs[batch.id] = scope.launch {

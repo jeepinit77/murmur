@@ -57,9 +57,10 @@ Make it easy to listen to a WhatsApp message or conversation.
 ### Notification reading — Built, needs testing on a phone
 Settings → Notifications → Notification reading. Off by default; needs notification access.
 - Apps appear in a list after they send a notification. Only checked apps are read; for other apps, only the package name is stored.
-- Murmur posts its own silent notification for each chat (or each notification from other apps) with Play and Dismiss. Messages that arrive close together are grouped ("Mom · 3 messages"), and the full message text is read, not just what's visible in the notification.
+- Murmur posts its own notification for each chat (or each notification from other apps) with Play and Dismiss. Messages that arrive close together are grouped ("Mom · 3 messages"), and the full message text is read, not just what's visible in the notification.
 - Playing pauses what's being read, reads the notification, then resumes at the same sentence. Notification text is kept in memory only and never saved to the library.
-- Auto-play (off by default), per app, with conditions: only with headphones or Bluetooth, respect Do Not Disturb, and a Screen choice (on, off, any time).
+- Auto-play (off by default), set per app. Each app has its own conditions: only with headphones or Bluetooth, respect Do Not Disturb, and a Screen choice (on, off, any time).
+- Murmur's notifications use normal importance, so they appear with other notifications rather than under Silent, but without their own sound or vibration.
 - A one-time card on the home screen suggests it once the library has items.
 - To check: whether Android allows auto-play to start the playback service from the background (there's a fallback that reads in place), and how WhatsApp's notifications look in practice.
 

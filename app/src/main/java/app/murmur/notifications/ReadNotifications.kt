@@ -35,7 +35,6 @@ object ReadNotifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(batch.summary))
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setGroup(GROUP)
-            .setSilent(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(play)
             .setDeleteIntent(dismissIntent(context, batch.id))
@@ -62,7 +61,7 @@ object ReadNotifications {
             .setContentTitle(context.getString(R.string.channel_notification_reading))
             .setGroup(GROUP)
             .setGroupSummary(true)
-            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .build()
         runCatching { manager(context).notify(SUMMARY_ID, n) }
     }
