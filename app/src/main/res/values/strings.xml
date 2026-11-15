@@ -10,5 +10,4 @@
     <string name="channel_playback">Playback</string>
     <string name="channel_downloads">Voice downloads</string>
     <string name="preparing">Preparing to read…</string>
-    <string name="sample_text">This is Murmur, reading text aloud with a neural voice that runs entirely on your phone.</string>
 </resources>

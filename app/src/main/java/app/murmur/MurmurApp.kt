@@ -8,8 +8,11 @@ import app.murmur.library.Importer
 import app.murmur.library.LibraryStore
 import app.murmur.playback.Reader
 import app.murmur.settings.Settings
+import app.murmur.voice.SherpaVoiceSource
 import app.murmur.voice.Synthesizer
 import app.murmur.voice.VoiceRepository
+import app.murmur.voice.VoiceSources
+import app.murmur.voice.extraVoiceSources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,7 +33,7 @@ class MurmurApp : Application() {
         super.onTrimMemory(level)
         // Neural models hold hundreds of MB; drop them when backgrounded and idle.
         if (level >= TRIM_MEMORY_BACKGROUND && !container.reader.state.value.playWhenReady) {
-            container.synthesizer.release()
+            container.voices.release()
         }
     }
 
@@ -59,15 +62,18 @@ class AppContainer(context: Context) {
         .followRedirects(true)
         .build()
     val settings = Settings(context)
-    val voices = VoiceRepository(context, settings)
-    val synthesizer = Synthesizer(voices)
+    /** Downloadable sherpa-onnx voice packs (Kokoro, Piper). */
+    val packs = VoiceRepository(context)
+    private val synthesizer = Synthesizer(packs)
+    private val sherpa = SherpaVoiceSource(packs, synthesizer, appScope)
+    /** Every voice the app can speak with, from all sources available in this build and on this phone. */
+    val voices = VoiceSources(
+        listOf(sherpa) + extraVoiceSources(context, appScope),
+        sherpa, packs, settings, appScope,
+    )
     val library = LibraryStore(context, appScope)
     val importer = Importer(context, http)
-    val reader = Reader(context, appScope, synthesizer, voices, settings, library)
-
-    init {
-        voices.refresh()
-    }
+    val reader = Reader(context, appScope, voices, settings, library)
 }
 
 val Context.container: AppContainer get() = (applicationContext as MurmurApp).container

@@ -12,6 +12,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.session.MediaController
@@ -25,8 +27,11 @@ import app.murmur.text.SentenceSegmenter
 import app.murmur.ui.screens.LibraryScreen
 import app.murmur.ui.screens.ReaderScreen
 import app.murmur.ui.screens.SettingsScreen
+import app.murmur.ui.screens.DownloadVoicesScreen
 import app.murmur.ui.screens.VoicesScreen
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -46,13 +51,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MurmurTheme {
                 val nav = rememberNavController()
-                val start = if (container.voices.hasAnyInstalled()) ROUTE_LIBRARY else ROUTE_VOICES
-                LaunchedEffect(pendingRoute.value) {
-                    pendingRoute.value?.let { route ->
-                        nav.navigate(route) { launchSingleTop = true }
-                        pendingRoute.value = null
-                    }
-                }
+                // Remembered: a changed start destination makes NavHost rebuild its graph and reset the back stack.
+                val start = remember { if (container.voices.hasAnyInstalled()) ROUTE_LIBRARY else ROUTE_VOICES }
                 NavHost(navController = nav, startDestination = start) {
                     composable(ROUTE_LIBRARY) {
                         LibraryScreen(
@@ -71,11 +71,25 @@ class MainActivity : ComponentActivity() {
                         })
                     }
                     composable(ROUTE_VOICES) {
-                        VoicesScreen(onDone = {
-                            if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) { popUpTo(ROUTE_VOICES) { inclusive = true } }
-                        })
+                        VoicesScreen(
+                            onDone = {
+                                if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) { popUpTo(ROUTE_VOICES) { inclusive = true } }
+                            },
+                            onDownloads = { nav.navigate(ROUTE_VOICE_DOWNLOADS) },
+                        )
                     }
+                    composable(ROUTE_VOICE_DOWNLOADS) { DownloadVoicesScreen(onBack = { nav.popBackStack() }) }
                     composable(ROUTE_SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
+                }
+                // Routes from intents (notification, share, "open with"). Read through snapshotFlow so
+                // composition never depends on pendingRoute; on a cold start, wait until NavHost has
+                // set its graph, since navigating before that would be undone.
+                LaunchedEffect(nav) {
+                    nav.currentBackStackEntryFlow.first()
+                    snapshotFlow { pendingRoute.value }.filterNotNull().collect { route ->
+                        nav.navigate(route) { launchSingleTop = true }
+                        pendingRoute.value = null
+                    }
                 }
             }
         }
@@ -128,6 +142,7 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_READER = "reader"
         const val ROUTE_NOW_PLAYING = "now_playing"
         const val ROUTE_VOICES = "voices"
+        const val ROUTE_VOICE_DOWNLOADS = "voice_downloads"
         const val ROUTE_SETTINGS = "settings"
     }
 }

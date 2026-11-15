@@ -8,8 +8,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import app.murmur.settings.Settings
-import app.murmur.settings.VoiceSelection
 import app.murmur.voices.VoiceCatalog
 import app.murmur.voices.VoiceFiles
 import app.murmur.voices.VoicePack
@@ -20,16 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import java.io.File
 
-sealed interface DownloadState {
-    data object Idle : DownloadState
-    data object Queued : DownloadState
-    /** [fraction] is null while extracting or when the size is unknown. */
-    data class Running(val fraction: Float?, val phase: String) : DownloadState
-    data class Failed(val message: String) : DownloadState
-}
-
-/** Catalog of downloadable voices plus what is installed on this device. */
-class VoiceRepository(private val context: Context, private val settings: Settings) {
+/** Catalog of downloadable sherpa-onnx voice packs plus which are installed on this device. */
+class VoiceRepository(private val context: Context) {
 
     val catalog: VoiceCatalog by lazy {
         VoiceCatalog.parse(context.assets.open("voices.json").bufferedReader().use { it.readText() })
@@ -52,21 +42,6 @@ class VoiceRepository(private val context: Context, private val settings: Settin
 
     fun refresh() {
         _installed.value = scan()
-        // First installed voice becomes the default so share-to-speak works immediately.
-        val current = settings.voice.value
-        if (current == null || !isInstalled(current.packId)) {
-            installedPacks().firstOrNull()?.let { settings.setVoice(VoiceSelection(it.id, it.defaultSpeaker)) }
-        }
-    }
-
-    /** Resolves [selection] to an installed pack, falling back to any installed voice. */
-    fun resolve(selection: VoiceSelection?): Pair<VoicePack, Int>? {
-        if (selection != null) {
-            val pack = catalog.byId(selection.packId)
-            if (pack != null && isInstalled(pack.id)) return pack to selection.speaker
-        }
-        val fallback = installedPacks().firstOrNull() ?: return null
-        return fallback to fallback.defaultSpeaker
     }
 
     fun download(id: String) {

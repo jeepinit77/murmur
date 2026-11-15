@@ -33,7 +33,7 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val c = applicationContext.container
         val id = inputData.getString(KEY_ID) ?: return@withContext Result.failure()
-        val pack = c.voices.catalog.byId(id) ?: return@withContext fail("Unknown voice $id")
+        val pack = c.packs.catalog.byId(id) ?: return@withContext fail("Unknown voice $id")
 
         runCatching { setForeground(foregroundInfo(pack.name, null)) }
 
@@ -49,15 +49,15 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
                 }
             }
             report("Unpacking", null, pack.name)
-            val tmp = File(c.voices.root, "$id.tmp")
+            val tmp = File(c.packs.root, "$id.tmp")
             tmp.deleteRecursively()
             extract(archive, tmp)
-            val dest = c.voices.dirFor(id)
+            val dest = c.packs.dirFor(id)
             dest.deleteRecursively()
             if (!tmp.renameTo(dest)) throw IOException("Could not move voice into place")
             archive.delete()
-            withContext(Dispatchers.Main) { c.voices.refresh() }
-            if (c.voices.filesFor(id) == null) return@withContext fail("Archive did not contain a usable model")
+            withContext(Dispatchers.Main) { c.packs.refresh() }
+            if (c.packs.filesFor(id) == null) return@withContext fail("Archive did not contain a usable model")
             Result.success()
         } catch (e: IOException) {
             if (runAttemptCount < 3) Result.retry() else fail(e.message ?: "Download failed")

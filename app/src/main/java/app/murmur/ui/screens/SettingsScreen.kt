@@ -1,8 +1,5 @@
 package app.murmur.ui.screens
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,22 +8,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,7 +28,6 @@ import app.murmur.BuildConfig
 import app.murmur.container
 import app.murmur.settings.Settings
 import app.murmur.settings.ShareMode
-import app.murmur.settings.VoiceSelection
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,8 +38,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val speed by c.settings.speed.collectAsStateWithLifecycle()
     val pause by c.settings.paragraphPauseMs.collectAsStateWithLifecycle()
     val shareMode by c.settings.shareMode.collectAsStateWithLifecycle()
-    val systemVoice by c.settings.systemVoice.collectAsStateWithLifecycle()
-    val installed by c.voices.installed.collectAsStateWithLifecycle()
+    val googleVoices by c.settings.googleVoices.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
@@ -78,34 +68,19 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            HorizontalDivider()
-            Section("System text-to-speech")
-            Text(
-                "Murmur can be your phone's TTS engine, so TalkBack, Chrome, e-book readers and other apps use these voices. " +
-                    "Choose Murmur as the preferred engine in Android settings.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            OutlinedButton(onClick = {
-                val intent = Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                try {
-                    context.startActivity(intent)
-                } catch (_: ActivityNotFoundException) {
-                    context.startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-            }) { Text("Open text-to-speech settings") }
-
-            var menu by remember { mutableStateOf(false) }
-            val packs = c.voices.catalog.voices.filter { it.id in installed }
-            val label = systemVoice?.let { sel -> packs.firstOrNull { it.id == sel.packId }?.name } ?: "Same as reading voice"
-            Text("Voice for other apps: $label", style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = { menu = true }) { Text("Change") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Same as reading voice") }, onClick = { c.settings.setSystemVoice(null); menu = false })
-                packs.forEach { p ->
-                    DropdownMenuItem(text = { Text(p.name) }, onClick = {
-                        c.settings.setSystemVoice(VoiceSelection(p.id, p.defaultSpeaker))
-                        menu = false
-                    })
+            if (c.voices.hasOptInSources) {
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Google voices", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "Add voices from Google's Speech Recognition & Synthesis app to the Voice screen. " +
+                                "On some phones, every Google voice sounds the same.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = googleVoices, onCheckedChange = { c.settings.setGoogleVoices(it) })
                 }
             }
 
@@ -114,7 +89,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             Text(
                 "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
                     "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
-                    "respective authors under the licenses shown on the Voices screen.",
+                    "respective authors, under their own licenses.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth(),
             )

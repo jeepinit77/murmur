@@ -9,20 +9,23 @@ A free, open-source read-aloud app for Pixel (and other Android 10+) phones, usi
 - **Neural voices that run on the phone**, via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx):
   - **Kokoro**: the most natural-sounding option, with 11 English speakers (v0.19) or 53 multilingual speakers (v1.0).
   - **Piper**: small, fast voices in many languages.
+- **Google voices** (play build only): 8 voices in 21 languages from the ML Kit GenAI Text-to-Speech API, on phones that support it (Pixel 8 and later, recent Galaxy flagships). They also run on the phone, but Google's Speech Recognition & Synthesis app downloads and plays them.
 - **Imports**: pasted text, web links (article extraction with Mozilla Readability), PDF (header, footer and hyphenation cleanup), EPUB (spine order, chapters) and plain or HTML files.
 - **Reader**: highlights the sentence being read and follows along. Tap any sentence to jump there. Includes chapter and sentence skip, 0.5–3× speed (pitch preserved), a sleep timer, a queue, and progress saved per document.
 - **Background playback** through a Media3 `MediaSessionService`, with lock-screen, Bluetooth and Android Auto controls, audio-focus handling, and a pause when headphones are unplugged.
-- **System TTS engine**: choose Murmur under *Settings › Accessibility › Text-to-speech output* and TalkBack, Chrome, e-book readers and navigation apps will use these voices too.
 
 ## Build
 
 ```bash
 ./scripts/fetch-sherpa-onnx.sh   # downloads the sherpa-onnx AAR (version in gradle.properties)
-./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
+./gradlew assemblePlayDebug      # app/build/outputs/apk/play/debug/app-play-debug.apk
+./gradlew assembleFossDebug      # open-source voices only, without ML Kit
 ./gradlew :core:text:test        # pure-JVM unit tests for the text pipeline
 ```
 
-Requirements: JDK 17+ and the Android SDK (API 35). CI (`.github/workflows/ci.yml`) builds debug and release APKs and uploads them as artifacts.
+Requirements: JDK 17+ and the Android SDK (API 35). CI (`.github/workflows/ci.yml`) builds debug and release APKs of both flavors and uploads them as artifacts.
+
+There are two product flavors. **foss** contains only open-source code and the sherpa-onnx voices. **play** adds Google's voices through ML Kit, which is a proprietary library.
 
 Voices are not bundled. They're downloaded on demand (30–330 MB) from sherpa-onnx's `tts-models` GitHub release, which is listed in `app/src/main/assets/voices.json`.
 
@@ -32,11 +35,12 @@ Voices are not bundled. They're downloaded on demand (30–330 MB) from sherpa-o
 core/text/   Pure Kotlin/JVM: Document model, sentence segmentation, speech normalization,
              web/EPUB/PDF/plain-text extraction, voice catalog, PCM helpers (unit-tested)
 app/
-  voice/     VoiceRepository (catalog + installed), VoiceDownloadWorker, Synthesizer (sherpa-onnx)
+  voice/     VoiceSource (the voice-provider interface), VoiceSources (all sources + the selected voice),
+             SherpaVoiceSource over VoiceRepository (packs), VoiceDownloadWorker and Synthesizer (sherpa-onnx)
+  play/      MlKitVoiceSource: Google voices (play flavor only)
   library/   LibraryStore (JSON files + progress), Importer (URIs, URLs, PDF via pdfbox-android)
   playback/  Reader (synthesize-ahead → AudioTrack pipeline), SpeechPlayer (Media3), PlaybackService
   share/     ShareToSpeakActivity: the headless "share → speak now" entry point
-  system/    MurmurTtsService (android.speech.tts engine) + engine check/sample activities
   ui/        Compose screens: Library, Reader, Voices, Settings
 ```
 
@@ -48,6 +52,8 @@ app/
 
 `Reader` runs a producer coroutine that synthesizes up to four segments ahead on a dedicated TTS thread, and a consumer that writes float PCM to a streaming `AudioTrack` in roughly 100 ms slices. Each pause or seek starts a fresh track, so stale audio never plays. Speeds above 1.6× are produced by the model at 1.6× and then time-stretched by `AudioTrack` with pitch preserved.
 
+Google voices can't use this pipeline: Google's speech app plays the audio itself. For those, `Reader` sends one request per sentence and highlights each sentence when its audio starts.
+
 ## Licenses
 
-Murmur is GPL-3.0 because the sherpa-onnx voice frontends include espeak-ng (GPL-3.0). Each voice model has its own license, which is shown on the Voices screen. Some Piper voices are non-commercial only.
+Murmur is GPL-3.0 because the sherpa-onnx voice frontends include espeak-ng (GPL-3.0). Each voice model has its own license, listed in `app/src/main/assets/voices.json`. Some Piper voices are non-commercial only.

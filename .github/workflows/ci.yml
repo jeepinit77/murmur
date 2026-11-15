@@ -24,24 +24,24 @@ jobs:
       - name: Fetch sherpa-onnx
         run: ./scripts/fetch-sherpa-onnx.sh
       - name: Unit tests
-        run: ./gradlew :core:text:test testDebugUnitTest
+        run: ./gradlew :core:text:test :app:testPlayDebugUnitTest :app:testFossDebugUnitTest
       - name: Build debug APK
         run: ./gradlew assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: murmur-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/*/debug/*.apk
       - name: Build release APK
         run: ./gradlew assembleRelease
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: murmur-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/*/release/*.apk
       - name: Lint
         continue-on-error: true
-        run: ./gradlew lintDebug
+        run: ./gradlew lintPlayDebug lintFossDebug
       - uses: actions/upload-artifact@v4
         if: always()
         with:
