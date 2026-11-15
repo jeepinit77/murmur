@@ -13,7 +13,7 @@ fi
 URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${VERSION}/sherpa-onnx-${VERSION}.aar"
 echo "Downloading $URL"
 curl -fL --retry 4 -o "$OUT.tmp" "$URL"
-unzip -l "$OUT.tmp" | grep -q 'jni/arm64-v8a/' || { echo "Unexpected AAR layout"; exit 1; }
+unzip -l "$OUT.tmp" | grep 'jni/arm64-v8a/' >/dev/null || { echo "Unexpected AAR layout"; exit 1; }
 mv "$OUT.tmp" "$OUT"
 echo "$VERSION" > app/libs/.sherpa-version
 sha256sum "$OUT"
