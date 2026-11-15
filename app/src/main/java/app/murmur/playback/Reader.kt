@@ -56,6 +56,8 @@ data class ReaderState(
     val speed: Float = 1f,
     val sleepAtElapsed: Long? = null,
     val queueSize: Int = 0,
+    /** Something worth knowing that isn't an error, such as a missing voice for the article's language. */
+    val notice: String? = null,
 ) {
     val isPlaying: Boolean get() = playWhenReady && !buffering && !ended
 }
@@ -116,8 +118,16 @@ class Reader(
         _state.update {
             it.copy(
                 docId = PREPARING_ID, title = title, segmentCount = 0, currentIndex = 0,
-                playWhenReady = true, buffering = true, ended = false, error = null,
+                playWhenReady = true, buffering = true, ended = false, error = null, notice = null,
             )
+        }
+    }
+
+    /** Clears the "Preparing" placeholder when an import is canceled. */
+    fun clearPreparing() {
+        if (_state.value.docId == PREPARING_ID) {
+            _state.update { it.copy(docId = null, title = "", playWhenReady = false, buffering = false) }
+            abandonFocus()
         }
     }
 
@@ -146,9 +156,39 @@ class Reader(
             it.copy(
                 docId = docId, title = document.title, segmentCount = segments.size, currentIndex = start,
                 playWhenReady = false, buffering = false, ended = false, error = null,
+                notice = languageNotice(document),
             )
         }
         if (autoplay) play()
+    }
+
+    /**
+     * Swaps in a new version of the open document (after a reload), continuing at [index] and
+     * keeping playback going if it was.
+     */
+    suspend fun replaceDocument(docId: String, document: Document, index: Int) {
+        if (_content.value?.docId != docId) return
+        val wasPlaying = _state.value.playWhenReady
+        stopAudio()
+        val segments = withContext(Dispatchers.Default) { segmenter.segment(document) }
+        _content.value = ReaderContent(docId, document, segments)
+        _state.update {
+            it.copy(
+                title = document.title, segmentCount = segments.size,
+                currentIndex = index.coerceIn(0, (segments.size - 1).coerceAtLeast(0)),
+                ended = false, error = null, notice = languageNotice(document),
+            )
+        }
+        if (wasPlaying) play()
+    }
+
+    /** "No voice installed for French" when the article's language has no installed voice. */
+    private fun languageNotice(document: Document): String? {
+        val lang = document.language ?: return null
+        val current = voices.resolve() ?: return null
+        if (voices.languageOf(current) == lang || voices.resolveFor(lang) != null) return null
+        val name = java.util.Locale.forLanguageTag(lang).getDisplayLanguage(java.util.Locale.getDefault())
+        return if (name.isBlank() || name == lang) null else "No voice installed for $name"
     }
 
     suspend fun openFromLibrary(docId: String, autoplay: Boolean): Boolean {
@@ -210,6 +250,12 @@ class Reader(
         content.segments.firstOrNull { it.chapter > chapter }?.let { seekTo(it.index) }
     }
 
+    /** Jumps to the start of chapter [chapter]. */
+    fun seekToChapter(chapter: Int) {
+        val content = _content.value ?: return
+        content.segments.firstOrNull { it.chapter >= chapter }?.let { seekTo(it.index) }
+    }
+
     fun previousChapter() {
         val content = _content.value ?: return
         val cur = content.segments.getOrNull(_state.value.currentIndex) ?: return
@@ -263,7 +309,7 @@ class Reader(
         _state.update { it.copy(buffering = true) }
         registerNoisy()
         playJob = scope.launch {
-            val voice = voices.resolve()
+            val voice = voices.resolveFor(content.document.language) ?: voices.resolve()
             if (voice == null) {
                 showError("Download a voice first")
                 return@launch

@@ -74,6 +74,10 @@ class ShareToSpeakActivity : Activity() {
                 }
             }
 
+            // "Open with" on a web link.
+            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "http" || it.scheme == "https" }
+                ?.let { SpeakRequest(text = it.toString(), subject = subject) }
+
             Intent.ACTION_SEND_MULTIPLE -> {
                 val texts = intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT)?.map { it.toString() }
                 val streams = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)

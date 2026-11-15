@@ -102,4 +102,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     "playImplementation"(libs.mlkit.genai.tts)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

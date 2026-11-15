@@ -23,7 +23,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.murmur.container
 import app.murmur.playback.PlaybackService
-import app.murmur.text.SentenceSegmenter
 import app.murmur.ui.screens.LibraryScreen
 import app.murmur.ui.screens.ReaderScreen
 import app.murmur.ui.screens.SettingsScreen
@@ -63,12 +62,18 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("$ROUTE_READER/{id}") { entry ->
-                        ReaderScreen(docId = entry.arguments?.getString("id"), onBack = { nav.popBackStack() })
+                        ReaderScreen(
+                            docId = entry.arguments?.getString("id"),
+                            onBack = { nav.popBackStack() },
+                            onVoices = { nav.navigate(ROUTE_VOICES) },
+                        )
                     }
                     composable(ROUTE_NOW_PLAYING) {
-                        ReaderScreen(docId = null, onBack = {
-                            if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY)
-                        })
+                        ReaderScreen(
+                            docId = null,
+                            onBack = { if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) },
+                            onVoices = { nav.navigate(ROUTE_VOICES) },
+                        )
                     }
                     composable(ROUTE_VOICES) {
                         VoicesScreen(
@@ -125,10 +130,8 @@ class MainActivity : ComponentActivity() {
         val c = container
         lifecycleScope.launch {
             try {
-                val imported = c.importer.fromUri(uri, mime)
-                val count = SentenceSegmenter().segment(imported.document).size
-                val meta = c.library.add(imported.document, imported.source, imported.kind, count)
-                c.reader.open(meta.id, imported.document, startIndex = 0, autoplay = c.voices.hasAnyInstalled())
+                val outcome = c.imports.save(c.importer.fromUri(uri, mime))
+                c.reader.open(outcome.meta.id, outcome.document, startIndex = 0, autoplay = c.voices.hasAnyInstalled())
                 pendingRoute.value = ROUTE_NOW_PLAYING
             } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, e.message ?: "Couldn't open file", Toast.LENGTH_LONG).show()

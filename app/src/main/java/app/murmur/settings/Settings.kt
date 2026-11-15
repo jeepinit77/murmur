@@ -2,6 +2,9 @@ package app.murmur.settings
 
 import android.content.Context
 import androidx.core.content.edit
+import app.murmur.web.CodeMode
+import app.murmur.web.ExtractOptions
+import app.murmur.web.TableMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +36,70 @@ class Settings(context: Context) {
         runCatching { ShareMode.valueOf(prefs.getString(KEY_SHARE_MODE, null) ?: "") }.getOrDefault(ShareMode.REPLACE),
     )
     val shareMode: StateFlow<ShareMode> = _shareMode.asStateFlow()
+
+    // ---- Web articles ------------------------------------------------------------------
+
+    private val _headingsAsChapters = MutableStateFlow(prefs.getBoolean(KEY_HEADINGS, true))
+    val headingsAsChapters: StateFlow<Boolean> = _headingsAsChapters.asStateFlow()
+
+    private val _spokenIntro = MutableStateFlow(prefs.getBoolean(KEY_INTRO, false))
+    val spokenIntro: StateFlow<Boolean> = _spokenIntro.asStateFlow()
+
+    private val _readCaptions = MutableStateFlow(prefs.getBoolean(KEY_CAPTIONS, false))
+    val readCaptions: StateFlow<Boolean> = _readCaptions.asStateFlow()
+
+    private val _tableMode = MutableStateFlow(enumPref(KEY_TABLES, TableMode.SKIP))
+    val tableMode: StateFlow<TableMode> = _tableMode.asStateFlow()
+
+    private val _codeMode = MutableStateFlow(enumPref(KEY_CODE, CodeMode.SKIP))
+    val codeMode: StateFlow<CodeMode> = _codeMode.asStateFlow()
+
+    private val _keepPlayingWhileLoading = MutableStateFlow(prefs.getBoolean(KEY_KEEP_PLAYING, false))
+    /** In "start reading the new item" mode, keep reading the current item until the shared one is ready. */
+    val keepPlayingWhileLoading: StateFlow<Boolean> = _keepPlayingWhileLoading.asStateFlow()
+
+    fun extractOptions() = ExtractOptions(
+        headingsAsChapters = headingsAsChapters.value,
+        spokenIntro = spokenIntro.value,
+        readCaptions = readCaptions.value,
+        tables = tableMode.value,
+        code = codeMode.value,
+    )
+
+    fun setHeadingsAsChapters(on: Boolean) = putBool(KEY_HEADINGS, on, _headingsAsChapters)
+    fun setSpokenIntro(on: Boolean) = putBool(KEY_INTRO, on, _spokenIntro)
+    fun setReadCaptions(on: Boolean) = putBool(KEY_CAPTIONS, on, _readCaptions)
+    fun setKeepPlayingWhileLoading(on: Boolean) = putBool(KEY_KEEP_PLAYING, on, _keepPlayingWhileLoading)
+
+    fun setTableMode(m: TableMode) {
+        _tableMode.value = m
+        prefs.edit { putString(KEY_TABLES, m.name) }
+    }
+
+    fun setCodeMode(m: CodeMode) {
+        _codeMode.value = m
+        prefs.edit { putString(KEY_CODE, m.name) }
+    }
+
+    /** The voice last chosen for a language ("fr"), used when an article is in that language. */
+    fun voiceForLanguage(language: String): String? = prefs.getString("$KEY_LANG_VOICE$language", null)
+
+    fun setVoiceForLanguage(language: String, id: String) {
+        if (voiceForLanguage(language) != id) prefs.edit { putString("$KEY_LANG_VOICE$language", id) }
+    }
+
+    /** Clipboard links the user dismissed in the library, by URL key. */
+    var dismissedClipboardKey: String?
+        get() = prefs.getString(KEY_CLIPBOARD_DISMISSED, null)
+        set(value) = prefs.edit { putString(KEY_CLIPBOARD_DISMISSED, value) }
+
+    private fun putBool(key: String, on: Boolean, flow: MutableStateFlow<Boolean>) {
+        flow.value = on
+        prefs.edit { putBoolean(key, on) }
+    }
+
+    private inline fun <reified T : Enum<T>> enumPref(key: String, default: T): T =
+        runCatching { enumValueOf<T>(prefs.getString(key, null) ?: "") }.getOrDefault(default)
 
     fun setVoice(id: String?) {
         _voice.value = id
@@ -76,5 +143,13 @@ class Settings(context: Context) {
         private const val KEY_GOOGLE_VOICES = "google_voices"
         private const val KEY_PARA_PAUSE = "paragraph_pause"
         private const val KEY_SHARE_MODE = "share_mode"
+        private const val KEY_HEADINGS = "web_headings_as_chapters"
+        private const val KEY_INTRO = "web_spoken_intro"
+        private const val KEY_CAPTIONS = "web_read_captions"
+        private const val KEY_TABLES = "web_tables"
+        private const val KEY_CODE = "web_code"
+        private const val KEY_KEEP_PLAYING = "keep_playing_while_loading"
+        private const val KEY_LANG_VOICE = "voice_for_"
+        private const val KEY_CLIPBOARD_DISMISSED = "clipboard_dismissed"
     }
 }

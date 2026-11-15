@@ -8,14 +8,11 @@ import app.murmur.text.EpubParser
 import app.murmur.text.HtmlParagraphs
 import app.murmur.text.PdfTextCleaner
 import app.murmur.text.PlainText
-import app.murmur.text.WebArticleExtractor
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.jsoup.Jsoup
 import java.io.File
 import java.io.IOException
@@ -23,16 +20,22 @@ import java.io.InputStream
 
 data class Imported(val document: Document, val source: String, val kind: String)
 
-class ImportException(message: String) : IOException(message)
+class ImportException(
+    message: String,
+    /** Worth trying again later: no network, a timeout, or a temporary server error. */
+    val retryable: Boolean = false,
+    /** The site wants the user to sign in (HTTP 401/403). */
+    val needsSignIn: Boolean = false,
+    val httpStatus: Int? = null,
+) : IOException(message)
 
 /** Converts anything the user shares or opens into a [Document]. */
-class Importer(private val context: Context, private val http: OkHttpClient) {
+class Importer(private val context: Context) {
 
     @Volatile private var pdfBoxReady = false
 
-    /** Shared or pasted text; a bare link is fetched and extracted as an article. */
+    /** Shared or pasted text. Links are handled by [Imports.link] before this is called. */
     suspend fun fromText(text: String, subject: String? = null): Imported {
-        PlainText.sharedUrl(text)?.let { url -> return fromUrl(url) }
         val doc = PlainText.toDocument(text, subject)
         if (doc.isEmpty) throw ImportException("Nothing to read")
         return Imported(doc, "Shared text", KIND_TEXT)
@@ -42,28 +45,6 @@ class Importer(private val context: Context, private val http: OkHttpClient) {
         val paragraphs = HtmlParagraphs.extract(Jsoup.parse(html).body())
         val doc = PlainText.toDocument(paragraphs.joinToString("\n\n"), subject)
         return Imported(doc, "Shared text", KIND_TEXT)
-    }
-
-    suspend fun fromUrl(url: String): Imported = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8")
-            .build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw ImportException("Couldn't load page (HTTP ${response.code})")
-            val body = response.body ?: throw ImportException("Empty page")
-            val type = body.contentType()?.toString().orEmpty()
-            val finalUrl = response.request.url.toString()
-            when {
-                "pdf" in type || finalUrl.endsWith(".pdf", ignoreCase = true) ->
-                    Imported(readPdf(body.byteStream(), finalUrl.substringAfterLast('/')), finalUrl, KIND_PDF)
-                else -> {
-                    val doc = WebArticleExtractor.extract(finalUrl, body.string())
-                    if (doc.isEmpty) throw ImportException("Couldn't find readable text on that page")
-                    Imported(doc, finalUrl, KIND_WEB)
-                }
-            }
-        }
     }
 
     suspend fun fromUri(uri: Uri, mimeHint: String? = null): Imported = withContext(Dispatchers.IO) {
@@ -97,6 +78,11 @@ class Importer(private val context: Context, private val http: OkHttpClient) {
         }
     }
 
+    /** Reads a downloaded PDF; used for links that point at PDF files. */
+    suspend fun readPdf(bytes: ByteArray, name: String): Document = withContext(Dispatchers.IO) {
+        readPdf(bytes.inputStream(), name)
+    }
+
     private fun readPdf(input: InputStream, name: String): Document {
         if (!pdfBoxReady) {
             PDFBoxResourceLoader.init(context)
@@ -127,7 +113,5 @@ class Importer(private val context: Context, private val http: OkHttpClient) {
         const val KIND_WEB = "web"
         const val KIND_PDF = "pdf"
         const val KIND_EPUB = "epub"
-        private const val USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 15; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
     }
 }

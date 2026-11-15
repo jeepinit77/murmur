@@ -10,4 +10,15 @@
     <string name="channel_playback">Playback</string>
     <string name="channel_downloads">Voice downloads</string>
     <string name="preparing">Preparing to read…</string>
+    <string name="channel_imports">Imports</string>
+    <string name="queued_saved">Added the saved copy to the reading queue</string>
+    <string name="resuming_saved">Resuming the saved copy</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="import_failed">Couldn\'t import page</string>
+    <string name="open_in_browser">Open in browser</string>
+    <string name="sign_in">Sign in</string>
+    <string name="saved_for_later">Saved to your library. It will be imported when you\'re back online.</string>
+    <string name="may_be_incomplete_title">This article may be incomplete</string>
+    <string name="open_with_label">Read aloud</string>
 </resources>

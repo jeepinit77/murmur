@@ -5,6 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import app.murmur.library.Importer
+import app.murmur.library.Imports
+import app.murmur.web.PageFetcher
+import app.murmur.web.WebImporter
+import app.murmur.web.WebViewRenderer
 import app.murmur.library.LibraryStore
 import app.murmur.playback.Reader
 import app.murmur.settings.Settings
@@ -45,10 +49,14 @@ class MurmurApp : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_DOWNLOADS, getString(R.string.channel_downloads), NotificationManager.IMPORTANCE_LOW),
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_IMPORTS, getString(R.string.channel_imports), NotificationManager.IMPORTANCE_LOW),
+        )
     }
 
     companion object {
         const val CHANNEL_PLAYBACK = "playback"
+        const val CHANNEL_IMPORTS = "imports"
         const val CHANNEL_DOWNLOADS = "downloads"
     }
 }
@@ -72,7 +80,9 @@ class AppContainer(context: Context) {
         sherpa, packs, settings, appScope,
     )
     val library = LibraryStore(context, appScope)
-    val importer = Importer(context, http)
+    val importer = Importer(context)
+    val web = WebImporter(PageFetcher(http), WebViewRenderer(context), importer::readPdf)
+    val imports = Imports(context, importer, web, library, settings)
     val reader = Reader(context, appScope, voices, settings, library)
 }
 

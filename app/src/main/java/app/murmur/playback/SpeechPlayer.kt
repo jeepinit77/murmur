@@ -1,5 +1,6 @@
 package app.murmur.playback
 
+import kotlin.math.roundToInt
 import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -64,6 +65,10 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
 
         val subtitle = when {
             s.error != null -> s.error
+            s.segmentCount > 0 && content != null -> {
+                val remaining = content.charOffsets.last() - content.charOffsets[s.currentIndex.coerceIn(0, content.segments.size)]
+                "Sentence ${s.currentIndex + 1} of ${s.segmentCount} · ${timeLeft(remaining, s.speed)}"
+            }
             s.segmentCount > 0 -> "Sentence ${s.currentIndex + 1} of ${s.segmentCount}"
             else -> "Preparing…"
         }
@@ -129,6 +134,16 @@ class SpeechPlayer(private val reader: Reader, scope: CoroutineScope) : SimpleBa
     override fun handleRelease(): ListenableFuture<*> = Futures.immediateVoidFuture()
 
     private fun msForChars(chars: Int): Long = (chars * 1000f / Reader.CHARS_PER_SECOND).toLong()
+
+    /** "12 min left" for the remaining characters at the current speed. */
+    private fun timeLeft(chars: Int, speed: Float): String {
+        val minutes = chars / (Reader.CHARS_PER_SECOND * 60f * speed.coerceAtLeast(0.1f))
+        return when {
+            minutes < 1f -> "Less than 1 min left"
+            minutes < 60f -> "${minutes.roundToInt()} min left"
+            else -> "${(minutes / 60).toInt()} hr ${(minutes % 60).roundToInt()} min left"
+        }
+    }
 
     private fun charsForMs(ms: Long): Int = (ms * Reader.CHARS_PER_SECOND / 1000f).toInt()
 
