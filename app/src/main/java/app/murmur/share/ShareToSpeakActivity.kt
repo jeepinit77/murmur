@@ -1,6 +1,7 @@
 package app.murmur.share
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -10,7 +11,11 @@ import app.murmur.R
 import app.murmur.container
 import app.murmur.playback.PlaybackService
 import app.murmur.playback.SpeakRequest
+import app.murmur.library.DocMeta
+import app.murmur.settings.SavedPageMode
 import app.murmur.settings.ShareMode
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import app.murmur.ui.MainActivity
 
 /**
@@ -50,9 +55,32 @@ class ShareToSpeakActivity : Activity() {
             )
             return
         }
-        val queued = c.settings.shareMode.value == ShareMode.QUEUE && c.reader.isBusy()
-        PlaybackService.speak(this, request)
-        Toast.makeText(this, if (queued) R.string.queued else R.string.reading, Toast.LENGTH_SHORT).show()
+        savedCopyToAskAbout(request)?.let { saved ->
+            startActivity(SavedPageActivity.intent(this, request, saved.title))
+            return
+        }
+        start(this, request)
+    }
+
+    /**
+     * A saved copy of a shared link, when the user wants to be asked whether to resume it.
+     * The library index is in memory once loaded; the timeout only matters on a cold start.
+     */
+    private fun savedCopyToAskAbout(request: SpeakRequest): DocMeta? {
+        val c = container
+        if (c.settings.savedPageMode.value != SavedPageMode.ASK) return null
+        val url = request.linkUrl() ?: return null
+        return runBlocking { withTimeoutOrNull(1_000) { c.imports.savedCopy(url) } }
+    }
+
+    companion object {
+        /** Hands [request] to the playback service and says whether it's reading or queued. */
+        fun start(context: Context, request: SpeakRequest) {
+            val c = context.container
+            val queued = c.settings.shareMode.value == ShareMode.QUEUE && c.reader.isBusy()
+            PlaybackService.speak(context, request)
+            Toast.makeText(context, if (queued) R.string.queued else R.string.reading, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun parse(intent: Intent): SpeakRequest? {
@@ -73,6 +101,10 @@ class ShareToSpeakActivity : Activity() {
                     else -> null
                 }
             }
+
+            // "Open with" on a web link.
+            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "http" || it.scheme == "https" }
+                ?.let { SpeakRequest(text = it.toString(), subject = subject) }
 
             Intent.ACTION_SEND_MULTIPLE -> {
                 val texts = intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT)?.map { it.toString() }

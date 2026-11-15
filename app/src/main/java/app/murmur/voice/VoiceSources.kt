@@ -43,6 +43,21 @@ class VoiceSources(
         activeNow().forEach { it.activate() }
         // Keep a downloaded voice selected, so share-to-speak works right after the first download.
         scope.launch { installed.collect { ensureSelection(it) } }
+        // Remember the user's choice per language, for articles in that language.
+        scope.launch {
+            combine(settings.voice, voices) { id, _ -> byId(id) }.collect { v ->
+                v?.let { settings.setVoiceForLanguage(languageOf(it), it.id) }
+            }
+        }
+    }
+
+    /** A voice to read a document in [language] ("fr"), or null when none is installed for it. */
+    fun resolveFor(language: String?): Voice? {
+        val current = resolve()
+        if (language == null || current == null || languageOf(current) == language) return current
+        val ready = installed.value
+        byId(settings.voiceForLanguage(language))?.takeIf { it.id in ready }?.let { return it }
+        return voices.value.filter { it.id in ready && languageOf(it) == language }.maxByOrNull { it.qualityRank }
     }
 
     fun hasAnyInstalled(): Boolean = installed.value.isNotEmpty()
@@ -59,6 +74,8 @@ class VoiceSources(
     }
 
     fun release() = sources.forEach { it.release() }
+
+    fun languageOf(voice: Voice): String = java.util.Locale.forLanguageTag(voice.language).language
 
     private fun activeNow(): List<VoiceSource> = sources.filter { !it.requiresOptIn || settings.googleVoices.value }
 

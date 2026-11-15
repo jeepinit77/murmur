@@ -13,3 +13,6 @@ app/libs/*.aar
 app/src/main/jniLibs/
 app/src/main/java/com/k2fsa/
 app/libs/.sherpa-version
+
+.claude/settings.local.json
+.claude/.deploy/

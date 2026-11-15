@@ -5,8 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import app.murmur.library.Importer
+import app.murmur.library.Imports
+import app.murmur.library.PendingTableSummaries
+import app.murmur.notifications.NotificationInbox
+import app.murmur.notifications.NotificationReaderService
+import app.murmur.web.PageFetcher
+import app.murmur.web.WebImporter
+import app.murmur.web.tableAi
+import app.murmur.web.WebViewRenderer
 import app.murmur.library.LibraryStore
 import app.murmur.playback.Reader
+import app.murmur.playback.SoundCues
 import app.murmur.settings.Settings
 import app.murmur.voice.SherpaVoiceSource
 import app.murmur.voice.Synthesizer
@@ -16,6 +25,7 @@ import app.murmur.voice.extraVoiceSources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -27,6 +37,8 @@ class MurmurApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         createChannels()
+        // The listener unbinds itself while the setting is off; reconnect it if it's on now.
+        if (container.settings.notificationReading.value) NotificationReaderService.applySetting(this, true)
     }
 
     override fun onTrimMemory(level: Int) {
@@ -45,11 +57,28 @@ class MurmurApp : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_DOWNLOADS, getString(R.string.channel_downloads), NotificationManager.IMPORTANCE_LOW),
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_IMPORTS, getString(R.string.channel_imports), NotificationManager.IMPORTANCE_LOW),
+        )
+        // Normal importance so these appear with other notifications, not under Silent. They're
+        // posted without sound or vibration, since the original notification already alerted.
+        // A channel's importance can't be raised later, so this replaces the earlier low channel.
+        nm.deleteNotificationChannel("notification_reading")
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_NOTIFICATION_READING, getString(R.string.channel_notification_reading), NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            },
+        )
     }
 
     companion object {
         const val CHANNEL_PLAYBACK = "playback"
+        const val CHANNEL_IMPORTS = "imports"
         const val CHANNEL_DOWNLOADS = "downloads"
+        const val CHANNEL_NOTIFICATION_READING = "notification_reading_items"
     }
 }
 
@@ -72,8 +101,20 @@ class AppContainer(context: Context) {
         sherpa, packs, settings, appScope,
     )
     val library = LibraryStore(context, appScope)
-    val importer = Importer(context, http)
+    /** On-device table summaries; null in the foss build. */
+    val tableAi = tableAi(context, appScope)
+    val importer = Importer(context, settings, tableAi)
+    val web = WebImporter(PageFetcher(http), WebViewRenderer(context), importer::readPdf, tableAi)
+    val imports = Imports(context, importer, web, library, settings)
     val reader = Reader(context, appScope, voices, settings, library)
+    /** Table summaries postponed because Gemini Nano only runs while Murmur is on screen. */
+    val pendingTables = PendingTableSummaries(library, settings, tableAi, reader, appScope)
+    /** Loading and error sounds, driven by the reader's state. */
+    val cues = SoundCues(reader, settings, appScope).also { it.start() }
+    /** Notifications from other apps waiting to be read; kept in memory only. */
+    val notificationInbox = NotificationInbox(context, settings, voices, reader, appScope)
+    /** Set when the app is opened from the playback notification; the reader shows its player card and clears it. */
+    val playerCardRequest = MutableStateFlow(false)
 }
 
 val Context.container: AppContainer get() = (applicationContext as MurmurApp).container

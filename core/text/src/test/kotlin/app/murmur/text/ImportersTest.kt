@@ -17,7 +17,7 @@ class ImportersTest {
     @Test fun detectsSharedUrls() {
         assertEquals("https://a.com/x", PlainText.sharedUrl("https://a.com/x"))
         assertEquals("https://a.com/x", PlainText.sharedUrl("Great article https://a.com/x"))
-        assertNull(PlainText.sharedUrl("A long note.\nWith lines https://a.com and more\nlines"))
+        assertNull(PlainText.sharedUrl("A long note.\n" + "With lots of lines and more text. ".repeat(40) + " https://a.com"))
         assertNull(PlainText.sharedUrl("No links here at all."))
     }
 
@@ -45,7 +45,7 @@ class ImportersTest {
             </article>
             <footer>Copyright footer</footer></body></html>
         """.trimIndent()
-        val doc = WebArticleExtractor.extract("https://news.example/big", html)
+        val doc = WebArticleExtractor.extract("https://news.example/big", html).document
         assertEquals("Big News", doc.title)
         val paras = doc.chapters[0].paragraphs
         assertEquals("Big News", paras.first())
