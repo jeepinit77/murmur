@@ -26,6 +26,22 @@ enum class LineSpacing(val label: String, val multiplier: Float) {
     WIDE("Wide", 1.9f),
 }
 
+/** Background and text colors for articles in the reader. */
+enum class ReadingColors(val label: String) {
+    APP("Match app"),
+    WHITE("White"),
+    SEPIA("Sepia"),
+    DARK("Dark"),
+    BLACK("Black"),
+}
+
+/** Side margins for article text in the reader. */
+enum class ReaderMargins(val label: String, val dp: Int) {
+    NARROW("Narrow", 12),
+    NORMAL("Normal", 20),
+    WIDE("Wide", 36),
+}
+
 /** When notifications may be read automatically, depending on the screen. */
 enum class AutoPlayScreen { SCREEN_ON, SCREEN_OFF, ANY }
 
@@ -157,6 +173,20 @@ class Settings(context: Context) {
     fun setLineSpacing(l: LineSpacing) {
         _lineSpacing.value = l
         prefs.edit { putString(KEY_LINE_SPACING, l.name) }
+    }
+
+    private val _readingColors = MutableStateFlow(enumPref(KEY_READING_COLORS, ReadingColors.APP))
+    val readingColors: StateFlow<ReadingColors> = _readingColors.asStateFlow()
+    fun setReadingColors(c: ReadingColors) {
+        _readingColors.value = c
+        prefs.edit { putString(KEY_READING_COLORS, c.name) }
+    }
+
+    private val _readerMargins = MutableStateFlow(enumPref(KEY_READER_MARGINS, ReaderMargins.NORMAL))
+    val readerMargins: StateFlow<ReaderMargins> = _readerMargins.asStateFlow()
+    fun setReaderMargins(m: ReaderMargins) {
+        _readerMargins.value = m
+        prefs.edit { putString(KEY_READER_MARGINS, m.name) }
     }
 
     private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
@@ -332,6 +362,8 @@ class Settings(context: Context) {
         private const val KEY_READER_FONT = "reader_font"
         private const val KEY_LINE_SPACING = "reader_line_spacing"
         private const val KEY_KEEP_SCREEN_ON = "reader_keep_screen_on"
+        private const val KEY_READING_COLORS = "reader_colors"
+        private const val KEY_READER_MARGINS = "reader_margins"
         const val DEFAULT_TEXT_SIZE = 19
         const val MIN_TEXT_SIZE = 14
         const val MAX_TEXT_SIZE = 30

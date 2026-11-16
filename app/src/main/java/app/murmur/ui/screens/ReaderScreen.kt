@@ -80,6 +80,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -150,9 +154,14 @@ private fun firstSegmentOfRows(rows: List<ReaderRow>, segmentCount: Int): IntArr
     return out
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String? = null) {
+    ReadingTheme { ReaderScreenBody(docId, onBack, onVoices, initialFind) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String?) {
     val context = LocalContext.current
     val c = context.container
     val scope = rememberCoroutineScope()
@@ -246,6 +255,19 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 if (!listState.canScrollForward) c.library.setFinished(id, true)
             }
     }
+
+    // How far along the reader is, by words: for the progress line and the time left.
+    val wordsBefore = remember(current) {
+        current?.segments?.let { segs ->
+            IntArray(segs.size + 1).also { a -> segs.forEachIndexed { i, seg -> a[i + 1] = a[i] + ListeningTime.words(seg.text) } }
+        }
+    }
+    val readingAt by remember(rowStarts) { derivedStateOf { readingIndex() } }
+    val atEnd by remember { derivedStateOf { !listState.canScrollForward } }
+    val place = if (listening) state.currentIndex else readingAt
+    val totalWords = wordsBefore?.last() ?: 0
+    val wordsRead = if (atEnd && !listening) totalWords else wordsBefore?.getOrNull(place) ?: 0
+    val progress = if (totalWords == 0) 0f else wordsRead.toFloat() / totalWords
 
     val keepScreenOn by c.settings.keepScreenOn.collectAsStateWithLifecycle()
     if (keepScreenOn && current != null && !listening) {
@@ -367,7 +389,7 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 modifier = Modifier.fillMaxSize(),
                 // The bars float over the article, so hiding them never moves the text.
                 contentPadding = PaddingValues(
-                    start = 20.dp, end = 20.dp,
+                    start = styles.margin.dp, end = styles.margin.dp,
                     top = with(density) { topHeight.toDp() } + 16.dp,
                     bottom = with(density) { bottomHeight.toDp() } + 16.dp,
                 ),
@@ -433,7 +455,17 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                         TopAppBar(
                             title = {
                                 AnimatedVisibility(visible = headerHidden, enter = fadeIn(), exit = fadeOut()) {
-                                    Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Column {
+                                        Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        // Reading time left; while listening, the player shows listening time.
+                                        if (!listening && totalWords > 0) {
+                                            Text(
+                                                "${ListeningTime.readingLabel(totalWords - wordsRead)} left",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
                                 }
                             },
                             navigationIcon = { BackIcon(onBack) },
@@ -491,6 +523,25 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                     }
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = !showChrome && layout != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            val track = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            val fill = MaterialTheme.colorScheme.primary
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .drawBehind {
+                        drawRect(track)
+                        drawRect(fill, size = Size(size.width * progress, size.height))
+                    },
+            )
         }
 
         AnimatedVisibility(
@@ -558,7 +609,9 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
-            Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 24.dp)) { ReaderTextControls() }
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 8.dp, end = 8.dp, bottom = 24.dp)) {
+                ReaderTextControls()
+            }
         }
     }
 }
@@ -679,6 +732,8 @@ private fun ParagraphText(
     }
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val highlight = scheme.primaryContainer.copy(alpha = 0.75f)
+    // Long press selects text to copy; a tap still listens from that sentence.
+    SelectionContainer {
     Text(
         text = text,
         style = style,
@@ -718,6 +773,7 @@ private fun ParagraphText(
                 }
             },
     )
+    }
 }
 
 /** The top bar's contents; a label to return from early. */

@@ -81,11 +81,13 @@ Articles can be read on screen as well as listened to, without getting in the wa
 - **Open in Murmur** in the share menu popup opens an article straight into the reader.
 - Opening an article while something else plays doesn't interrupt it. The article opens for reading with the player bar hidden and a **Play** button that switches the player to it, starting from the top of the screen.
 - One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
-- Full screen while reading: scrolling down slides away the top bar, the player bar and the phone's status and navigation bars; scrolling up or reaching either end brings them back. The bars stay while listening or finding in the article.
+- Full screen while reading: scrolling down slides away the top bar, the player bar and the phone's status and navigation bars, leaving only a thin progress line at the bottom. Scrolling up or reaching either end brings them back. The bars stay while listening or finding in the article.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
-- **Text settings** (the text size button, also in Settings → Appearance → Reader): text size, sans serif or serif, line spacing, and **Keep screen on** while reading.
+- **Text settings** (the text size button, also in Settings → Appearance → Reader): colors (Match app, White, Sepia, Dark, Black), text size, sans serif or serif, line spacing, margins (Narrow, Normal, Wide), and **Keep screen on** while reading.
+- The top bar shows reading time left under the title once the header scrolls away.
+- Long press selects text, with Copy and Select all. A tap still listens from that sentence.
 - The header shows listening and reading time ("51 min listen · 34 min read").
-- Not yet: selecting and copying text, bookmarks.
+- Not yet: images, tappable links, Share in the selection menu, bookmarks.
 
 ### URLs in text — Planned
 Choose how web addresses written in the text are read.
