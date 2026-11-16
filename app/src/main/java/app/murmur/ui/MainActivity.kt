@@ -11,7 +11,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavBackStackEntry
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +43,12 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.toReaderMode() =
+    targetState.destination.route?.startsWith(MainActivity.ROUTE_READER_MODE) == true
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.fromReaderMode() =
+    initialState.destination.route?.startsWith(MainActivity.ROUTE_READER_MODE) == true
 
 class MainActivity : ComponentActivity() {
 
@@ -84,6 +93,8 @@ class MainActivity : ComponentActivity() {
                     composable(
                         "$ROUTE_READER/{id}?find={find}",
                         arguments = listOf(navArgument("find") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                        exitTransition = { if (toReaderMode()) slideOutOfContainer(SlideDirection.Start) { it / 4 } else null },
+                        popEnterTransition = { if (fromReaderMode()) slideIntoContainer(SlideDirection.End) { it / 4 } else null },
                     ) { entry ->
                         ReaderScreen(
                             docId = entry.arguments?.getString("id"),
@@ -93,7 +104,12 @@ class MainActivity : ComponentActivity() {
                             onReaderMode = { id -> nav.navigate("$ROUTE_READER_MODE/$id") },
                         )
                     }
-                    composable("$ROUTE_READER_MODE/{id}") { entry ->
+                    // Reader mode slides in from the side, like any screen opened from the article.
+                    composable(
+                        "$ROUTE_READER_MODE/{id}",
+                        enterTransition = { slideIntoContainer(SlideDirection.Start) },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End) },
+                    ) { entry ->
                         ReaderScreen(
                             docId = entry.arguments?.getString("id"),
                             onBack = { nav.popBackStack() },
@@ -101,7 +117,11 @@ class MainActivity : ComponentActivity() {
                             readerMode = true,
                         )
                     }
-                    composable(ROUTE_NOW_PLAYING) {
+                    composable(
+                        ROUTE_NOW_PLAYING,
+                        exitTransition = { if (toReaderMode()) slideOutOfContainer(SlideDirection.Start) { it / 4 } else null },
+                        popEnterTransition = { if (fromReaderMode()) slideIntoContainer(SlideDirection.End) { it / 4 } else null },
+                    ) {
                         ReaderScreen(
                             docId = null,
                             onBack = { if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) },
