@@ -1,75 +1,274 @@
 package app.murmur.ui.screens
 
-import androidx.compose.foundation.clickable
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.BuildConfig
 import app.murmur.container
-import app.murmur.settings.Settings
 import app.murmur.settings.SavedPageMode
+import app.murmur.settings.Settings
 import app.murmur.settings.ShareMode
 import app.murmur.web.CodeMode
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.semantics.Role
 import app.murmur.web.ExtractOptions
 import app.murmur.web.SiteSignInActivity
 import app.murmur.web.TableAiStatus
 import app.murmur.web.TableMode
 import kotlinx.coroutines.delay
-import android.widget.Toast
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import kotlin.math.roundToInt
 
+/** The pages Settings opens. [route] is the part after "settings/" in the navigation route. */
+enum class SettingsPage(val route: String, val title: String) {
+    PLAYBACK("playback", "Playback"),
+    APPEARANCE("appearance", "Appearance"),
+    READING("reading", "Reading"),
+    SHARING("sharing", "Sharing"),
+    ABOUT("about", "About");
+
+    companion object {
+        fun fromRoute(route: String?): SettingsPage? = entries.firstOrNull { it.route == route }
+    }
+}
+
+/**
+ * Settings: a short list of categories, each with a summary of its current values, so the
+ * setting someone wants is one tap away instead of somewhere in a long page.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
-    val context = LocalContext.current
-    val c = context.container
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onPage: (SettingsPage) -> Unit,
+    onVoices: () -> Unit,
+    onNotificationReading: () -> Unit,
+) {
+    val c = LocalContext.current.container
+    val voices by c.voices.voices.collectAsStateWithLifecycle()
+    val voiceId by c.settings.voice.collectAsStateWithLifecycle()
+    val speed by c.settings.speed.collectAsStateWithLifecycle()
+    val rewind by c.settings.rewindSeconds.collectAsStateWithLifecycle()
+    val mode by c.settings.themeMode.collectAsStateWithLifecycle()
+    val palette by c.settings.palette.collectAsStateWithLifecycle()
+    val notificationReading by c.settings.notificationReading.collectAsStateWithLifecycle()
+
+    Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            CategoryGroup(
+                Category(Icons.Default.RecordVoiceOver, "Voice", voices.firstOrNull { it.id == voiceId }?.name ?: "None", onVoices),
+                Category(Icons.Default.PlayCircle, "Playback", "${formatSpeed(speed)} · Rewind $rewind seconds") { onPage(SettingsPage.PLAYBACK) },
+                Category(Icons.Default.Palette, "Appearance", "${mode.label} · ${palette.label}") { onPage(SettingsPage.APPEARANCE) },
+            )
+            CategoryGroup(
+                Category(Icons.AutoMirrored.Filled.Article, "Reading", "Web articles, code blocks, tables and website sign-ins") {
+                    onPage(SettingsPage.READING)
+                },
+                Category(Icons.Default.Share, "Sharing", "What happens when you share to Murmur") { onPage(SettingsPage.SHARING) },
+                Category(Icons.Default.Notifications, "Notification reading", if (notificationReading) "On" else "Off", onNotificationReading),
+            )
+            CategoryGroup(
+                Category(Icons.Default.Info, "About", "Murmur ${BuildConfig.VERSION_NAME}") { onPage(SettingsPage.ABOUT) },
+            )
+        }
+    }
+}
+
+private class Category(val icon: ImageVector, val title: String, val summary: String, val onClick: () -> Unit)
+
+/** Categories that belong together, as one segmented list. */
+@Composable
+private fun CategoryGroup(vararg items: Category) {
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        items.forEachIndexed { i, item ->
+            Surface(
+                onClick = item.onClick,
+                shape = segmentShape(i, items.size),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(item.icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+                    }
+                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                        Text(item.title, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            item.summary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One category's settings on its own page. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit) {
+    Scaffold(topBar = { TopAppBar(title = { Text(page.title) }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            when (page) {
+                SettingsPage.PLAYBACK -> PlaybackSettings()
+                SettingsPage.APPEARANCE -> AppearanceSettings()
+                SettingsPage.READING -> ReadingSettings()
+                SettingsPage.SHARING -> SharingSettings()
+                SettingsPage.ABOUT -> AboutSettings()
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackSettings() {
+    val c = LocalContext.current.container
     val speed by c.settings.speed.collectAsStateWithLifecycle()
     val pause by c.settings.paragraphPauseMs.collectAsStateWithLifecycle()
+    val rewind by c.settings.rewindSeconds.collectAsStateWithLifecycle()
+    val soundCues by c.settings.soundCues.collectAsStateWithLifecycle()
+
+    SettingsGroup {
+        SliderRow(
+            title = "Reading speed",
+            value = formatSpeed(speed),
+            position = speed,
+            range = Settings.MIN_SPEED..Settings.MAX_SPEED,
+            onChange = { c.reader.setSpeed((it * 20).roundToInt() / 20f) },
+        )
+        SliderRow(
+            title = "Pause between paragraphs",
+            value = "$pause ms",
+            position = pause.toFloat(),
+            range = 0f..1500f,
+            onChange = { c.settings.setParagraphPauseMs((it / 50).roundToInt() * 50) },
+        )
+        ChoiceRow(
+            title = "Rewind button",
+            choices = Settings.REWIND_CHOICES.map { Choice(it, "$it seconds") },
+            selected = rewind,
+            onSelect = c.settings::setRewindSeconds,
+        )
+        SwitchRow(
+            title = "Loading and error sounds",
+            description = "Play a quiet tone while audio is being prepared, and a short sound if reading can't start.",
+            checked = soundCues,
+            onChange = c.settings::setSoundCues,
+        )
+    }
+}
+
+@Composable
+private fun SharingSettings() {
+    val c = LocalContext.current.container
     val shareMode by c.settings.shareMode.collectAsStateWithLifecycle()
     val savedPageMode by c.settings.savedPageMode.collectAsStateWithLifecycle()
-    val rewind by c.settings.rewindSeconds.collectAsStateWithLifecycle()
-    val googleVoices by c.settings.googleVoices.collectAsStateWithLifecycle()
     val keepPlaying by c.settings.keepPlayingWhileLoading.collectAsStateWithLifecycle()
-    val soundCues by c.settings.soundCues.collectAsStateWithLifecycle()
+
+    SettingsGroup {
+        ChoiceRow(
+            title = "When sharing while something is playing",
+            choices = ShareMode.entries.map {
+                Choice(it, if (it == ShareMode.REPLACE) "Start reading the new item" else "Add it to the queue")
+            },
+            selected = shareMode,
+            onSelect = c.settings::setShareMode,
+        )
+        if (shareMode == ShareMode.REPLACE) {
+            SwitchRow(
+                title = "Keep playing while loading",
+                description = "Keep reading the current item until the shared page is ready, instead of stopping right away.",
+                checked = keepPlaying,
+                onChange = c.settings::setKeepPlayingWhileLoading,
+            )
+        }
+        ChoiceRow(
+            title = "When sharing a saved page",
+            choices = SavedPageMode.entries.map { mode ->
+                val label = when (mode) {
+                    SavedPageMode.ASK -> "Ask"
+                    SavedPageMode.RESUME -> "Resume"
+                    SavedPageMode.IMPORT_AGAIN -> "Import again"
+                }
+                Choice(mode, label)
+            },
+            selected = savedPageMode,
+            onSelect = c.settings::setSavedPageMode,
+        )
+    }
+}
+
+@Composable
+private fun ReadingSettings() {
+    val context = LocalContext.current
+    val c = context.container
     val headings by c.settings.headingsAsChapters.collectAsStateWithLifecycle()
     val intro by c.settings.spokenIntro.collectAsStateWithLifecycle()
     val captions by c.settings.readCaptions.collectAsStateWithLifecycle()
     val tables by c.settings.tableMode.collectAsStateWithLifecycle()
     val code by c.settings.codeMode.collectAsStateWithLifecycle()
     val labelAi by c.settings.labelAiSummaries.collectAsStateWithLifecycle()
-    val notificationReading by c.settings.notificationReading.collectAsStateWithLifecycle()
     // Table summaries need an on-device model: null in the foss build. Rechecked while it downloads.
     val tableAi = c.tableAi
     val aiStatus by produceState<TableAiStatus?>(null, tableAi) {
@@ -93,9 +292,9 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
                 TextButton(
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     onClick = {
-                    confirmClear = false
-                    SiteSignInActivity.clearSignIns()
-                    Toast.makeText(context, "Website sign-ins cleared", Toast.LENGTH_SHORT).show()
+                        confirmClear = false
+                        SiteSignInActivity.clearSignIns()
+                        Toast.makeText(context, "Website sign-ins cleared", Toast.LENGTH_SHORT).show()
                     },
                 ) { Text("Clear") }
             },
@@ -103,112 +302,53 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
         )
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            AppearanceSettings()
+    SettingsGroup(
+        "Web articles",
+        note = "These settings apply to pages you add from now on. To update a saved article, choose Reload from its menu.",
+    ) {
+        SwitchRow(
+            title = "Headings as chapters",
+            description = "Split articles at their section headings so you can skip between sections.",
+            checked = headings,
+            onChange = c.settings::setHeadingsAsChapters,
+        )
+        SwitchRow(
+            title = "Read title and author first",
+            description = "After the title, read the subtitle, author, site name and publish date.",
+            checked = intro,
+            onChange = c.settings::setSpokenIntro,
+        )
+        SwitchRow(
+            title = "Read image captions",
+            description = "Read figure captions and image descriptions.",
+            checked = captions,
+            onChange = c.settings::setReadCaptions,
+        )
+        ChoiceRow(
+            title = "Code blocks",
+            choices = listOf(
+                Choice(CodeMode.SKIP, "Skip"),
+                Choice(CodeMode.NOTICE, "Say “${ExtractOptions.CODE_NOTICE}”"),
+                Choice(CodeMode.READ, "Read line by line"),
+            ),
+            selected = code,
+            onSelect = c.settings::setCodeMode,
+        )
+    }
 
-            SettingsGroup("Playback") {
-                SliderRow(
-                    title = "Reading speed",
-                    value = formatSpeed(speed),
-                    position = speed,
-                    range = Settings.MIN_SPEED..Settings.MAX_SPEED,
-                    onChange = { c.reader.setSpeed((it * 20).roundToInt() / 20f) },
-                )
-                SliderRow(
-                    title = "Pause between paragraphs",
-                    value = "$pause ms",
-                    position = pause.toFloat(),
-                    range = 0f..1500f,
-                    onChange = { c.settings.setParagraphPauseMs((it / 50).roundToInt() * 50) },
-                )
-                SwitchRow(
-                    title = "Loading and error sounds",
-                    description = "Play a quiet tone while audio is being prepared, and a short sound if reading can't start.",
-                    checked = soundCues,
-                    onChange = c.settings::setSoundCues,
-                )
-            }
-
-            SettingsGroup("Rewind button") {
-                Settings.REWIND_CHOICES.forEach { seconds ->
-                    RadioRow("$seconds seconds", rewind == seconds) { c.settings.setRewindSeconds(seconds) }
-                }
-            }
-
-            SettingsGroup("When sharing while something is playing") {
-                ShareMode.entries.forEach { mode ->
-                    RadioRow(
-                        if (mode == ShareMode.REPLACE) "Start reading the new item" else "Add it to the queue",
-                        shareMode == mode,
-                    ) { c.settings.setShareMode(mode) }
-                }
-                if (shareMode == ShareMode.REPLACE) {
-                    SwitchRow(
-                        title = "Keep playing while loading",
-                        description = "Keep reading the current item until the shared page is ready, instead of stopping right away.",
-                        checked = keepPlaying,
-                        onChange = c.settings::setKeepPlayingWhileLoading,
-                    )
-                }
-            }
-
-            SettingsGroup("When sharing a saved page") {
-                SavedPageMode.entries.forEach { mode ->
-                    val label = when (mode) {
-                        SavedPageMode.ASK -> "Ask"
-                        SavedPageMode.RESUME -> "Resume"
-                        SavedPageMode.IMPORT_AGAIN -> "Import again"
-                    }
-                    RadioRow(label, savedPageMode == mode) { c.settings.setSavedPageMode(mode) }
-                }
-            }
-
-            SettingsGroup(
-                "Web articles",
-                note = "These settings apply to pages you add from now on. To update a saved article, choose Reload from its menu.",
-            ) {
-                SwitchRow(
-                    title = "Headings as chapters",
-                    description = "Split articles at their section headings so you can skip between sections.",
-                    checked = headings,
-                    onChange = c.settings::setHeadingsAsChapters,
-                )
-                SwitchRow(
-                    title = "Read title and author first",
-                    description = "After the title, read the subtitle, author, site name and publish date.",
-                    checked = intro,
-                    onChange = c.settings::setSpokenIntro,
-                )
-                SwitchRow(
-                    title = "Read image captions",
-                    description = "Read figure captions and image descriptions.",
-                    checked = captions,
-                    onChange = c.settings::setReadCaptions,
-                )
-                SettingsSubheading("Code blocks")
-                RadioRow("Skip", code == CodeMode.SKIP) { c.settings.setCodeMode(CodeMode.SKIP) }
-                RadioRow("Say “${ExtractOptions.CODE_NOTICE}”", code == CodeMode.NOTICE) { c.settings.setCodeMode(CodeMode.NOTICE) }
-                RadioRow("Read line by line", code == CodeMode.READ) { c.settings.setCodeMode(CodeMode.READ) }
-            }
-
-            // Applies to every source that keeps tables: web pages, pasted text, HTML and text files, EPUBs.
-            SettingsGroup("Tables") {
-                RadioRow("Skip", tables == TableMode.SKIP) { c.settings.setTableMode(TableMode.SKIP) }
-                // Without a model, a saved "Summarize" choice reads row by row.
-                val readSelected = tables == TableMode.READ || (tables == TableMode.SUMMARIZE && !canSummarize)
-                RadioRow("Read row by row", readSelected) { c.settings.setTableMode(TableMode.READ) }
-                if (tableAi != null) {
-                    RadioRow(
-                        label = "Summarize with AI",
-                        selected = tables == TableMode.SUMMARIZE && canSummarize,
+    // Applies to every source that keeps tables: web pages, pasted text, HTML and text files, EPUBs.
+    SettingsGroup {
+        // Without a model, a saved "Summarize" choice reads row by row.
+        val shownTables = if (tables == TableMode.SUMMARIZE && !canSummarize) TableMode.READ else tables
+        ChoiceRow(
+            title = "Tables",
+            choices = listOfNotNull(
+                Choice(TableMode.SKIP, "Skip"),
+                Choice(TableMode.READ, "Read row by row"),
+                tableAi?.let {
+                    Choice(
+                        TableMode.SUMMARIZE,
+                        "Summarize with AI",
                         enabled = canSummarize,
                         description = when (aiStatus) {
                             TableAiStatus.READY -> "Uses Gemini Nano on this phone. Tables with fewer than 4 rows are read row by row."
@@ -217,59 +357,45 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
                             TableAiStatus.UNSUPPORTED, TableAiStatus.ERROR -> "Not available on this phone. Requires Gemini Nano."
                             null -> null
                         },
-                    ) {
-                        c.settings.setTableMode(TableMode.SUMMARIZE)
-                        tableAi.prepare()
-                    }
-                    if (tables == TableMode.SUMMARIZE && canSummarize) {
-                        SwitchRow(
-                            title = "Label summaries as AI",
-                            description = "Read “Table summary by AI” before each summary.",
-                            checked = labelAi,
-                            onChange = c.settings::setLabelAiSummaries,
-                        )
-                    }
-                }
-            }
-
-            SettingsGroup("Notifications") {
-                NavigationRow(
-                    title = "Notification reading",
-                    description = "Read notifications from apps you choose.",
-                    value = if (notificationReading) "On" else "Off",
-                    onClick = onNotificationReading,
-                )
-            }
-
-            SettingsGroup(
-                "Website sign-ins",
-                note = "Sites you sign in to from an article's menu stay signed in, so articles from your subscriptions import in full.",
-            ) {
-                ActionRow("Clear website sign-ins", destructive = true) { confirmClear = true }
-            }
-
-            if (c.voices.hasOptInSources) {
-                SettingsGroup {
-                    SwitchRow(
-                        title = "Google voices",
-                        description = "Add voices from Google's Speech Recognition & Synthesis app to the Voice screen. " +
-                            "On some phones, every Google voice sounds the same.",
-                        checked = googleVoices,
-                        onChange = { c.settings.setGoogleVoices(it) },
                     )
-                }
-            }
-
-            SettingsGroup("About") {
-                Text(
-                    "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
-                        "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
-                        "respective authors, under their own licenses.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                },
+            ),
+            selected = shownTables,
+            onSelect = { mode ->
+                c.settings.setTableMode(mode)
+                if (mode == TableMode.SUMMARIZE) tableAi?.prepare()
+            },
+        )
+        if (tableAi != null) {
+            if (tables == TableMode.SUMMARIZE && canSummarize) {
+                SwitchRow(
+                    title = "Label summaries as AI",
+                    description = "Read “Table summary by AI” before each summary.",
+                    checked = labelAi,
+                    onChange = c.settings::setLabelAiSummaries,
                 )
             }
         }
+    }
+
+    SettingsGroup(
+        "Website sign-ins",
+        note = "Sites you sign in to from an article's menu stay signed in, so articles from your subscriptions import in full.",
+    ) {
+        ActionRow("Clear website sign-ins", destructive = true) { confirmClear = true }
+    }
+}
+
+@Composable
+private fun AboutSettings() {
+    SettingsGroup {
+        Text(
+            "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
+                "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
+                "respective authors, under their own licenses.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }

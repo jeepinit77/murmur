@@ -32,6 +32,8 @@ import app.murmur.ui.theme.MurmurTheme
 import app.murmur.ui.screens.NotificationReadingScreen
 import app.murmur.ui.screens.ReaderScreen
 import app.murmur.ui.screens.SettingsScreen
+import app.murmur.ui.screens.SettingsPage
+import app.murmur.ui.screens.SettingsPageScreen
 import app.murmur.ui.screens.DownloadVoicesScreen
 import app.murmur.ui.screens.VoicesScreen
 import com.google.common.util.concurrent.ListenableFuture
@@ -109,8 +111,14 @@ class MainActivity : ComponentActivity() {
                     composable(ROUTE_SETTINGS) {
                         SettingsScreen(
                             onBack = { nav.popBackStack() },
+                            onPage = { page -> nav.navigate("$ROUTE_SETTINGS/${page.route}") },
+                            onVoices = { nav.navigate(ROUTE_VOICES) },
                             onNotificationReading = { nav.navigate(ROUTE_NOTIFICATION_READING) },
                         )
+                    }
+                    composable("$ROUTE_SETTINGS/{page}") { entry ->
+                        val page = SettingsPage.fromRoute(entry.arguments?.getString("page"))
+                        if (page != null) SettingsPageScreen(page, onBack = { nav.popBackStack() })
                     }
                     composable(ROUTE_NOTIFICATION_READING) { NotificationReadingScreen(onBack = { nav.popBackStack() }) }
                 }

@@ -21,6 +21,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -248,4 +253,50 @@ internal fun SlimSlider(
         },
         modifier = modifier,
     )
+}
+
+/** One option of a [ChoiceRow]. */
+internal class Choice<T>(val value: T, val label: String, val description: String? = null, val enabled: Boolean = true)
+
+/**
+ * A setting with a few options, shown as one row with the current choice under its title. Tapping
+ * it opens a dialog with the options; picking one closes it.
+ */
+@Composable
+internal fun <T> ChoiceRow(title: String, choices: List<Choice<T>>, selected: T, onSelect: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = ROW_PADDING, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                choices.firstOrNull { it.value == selected }?.label.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(title) },
+            text = {
+                Column {
+                    choices.forEach { choice ->
+                        RadioRow(choice.label, choice.value == selected, choice.enabled, choice.description) {
+                            onSelect(choice.value)
+                            open = false
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+        )
+    }
 }

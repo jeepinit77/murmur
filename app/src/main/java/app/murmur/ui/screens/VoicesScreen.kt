@@ -139,6 +139,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                         }
                     }
                 }
+                if (c.voices.hasOptInSources) item(key = "google") { GoogleVoicesSetting() }
                 return@LazyColumn
             }
             if (mine.size > 3 && mine.any { it.gender != null }) {
@@ -177,7 +178,24 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
             item(key = "downloads") {
                 Box(Modifier.padding(16.dp)) { DownloadVoicesButton(onDownloads) }
             }
+            if (c.voices.hasOptInSources) item(key = "google") { GoogleVoicesSetting() }
         }
+    }
+}
+
+/** Lists voices from Google's speech app here too, on phones that have it. */
+@Composable
+private fun GoogleVoicesSetting() {
+    val c = LocalContext.current.container
+    val on by c.settings.googleVoices.collectAsStateWithLifecycle()
+    SettingsCard(Modifier.padding(horizontal = 16.dp)) {
+        SwitchRow(
+            title = "Google voices",
+            description = "Add voices from Google's Speech Recognition & Synthesis app to this list. " +
+                "On some phones, every Google voice sounds the same.",
+            checked = on,
+            onChange = { c.settings.setGoogleVoices(it) },
+        )
     }
 }
 

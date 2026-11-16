@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.material3.AlertDialog
@@ -243,7 +242,6 @@ fun LibraryScreen(
                     scrollBehavior = scrollBehavior,
                     actions = {
                         if (docs.isNotEmpty()) IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Search") }
-                        IconButton(onClick = onVoices) { Icon(Icons.Default.RecordVoiceOver, "Voices") }
                         IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
                     },
                 )
