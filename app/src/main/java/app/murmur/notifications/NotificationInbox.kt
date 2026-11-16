@@ -29,8 +29,13 @@ class NotificationInbox(
 
     fun offer(n: IncomingNotification) {
         val batch = batcher.offer(n) ?: return
+        val autoPlayOn = batch.packageName in settings.autoPlayApps.value
+        // Voice messages, photos, stickers and the like can't be read, so they're only worth
+        // announcing when the app is read automatically. The batch is kept: a text message that
+        // follows is offered with them.
+        if (batch.nothingToRead && !autoPlayOn) return
         ReadNotifications.show(context, batch)
-        if (batch.packageName in settings.autoPlayApps.value) {
+        if (autoPlayOn) {
             // Wait briefly so messages sent in quick succession are read together.
             autoPlayJobs.remove(batch.id)?.cancel()
             autoPlayJobs[batch.id] = scope.launch {

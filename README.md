@@ -57,3 +57,5 @@ Google voices can't use this pipeline: Google's speech app plays the audio itsel
 ## Licenses
 
 Murmur is GPL-3.0 because the sherpa-onnx voice frontends include espeak-ng (GPL-3.0). Each voice model has its own license, listed in `app/src/main/assets/voices.json`. Some Piper voices are non-commercial only.
+
+The interface font is [Figtree](https://github.com/erikdkennedy/figtree), under the SIL Open Font License 1.1 (`licenses/Figtree-OFL.txt`).

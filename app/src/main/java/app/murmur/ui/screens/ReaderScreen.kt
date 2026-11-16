@@ -32,6 +32,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.widget.Toast
@@ -105,20 +106,18 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
     val reader = c.reader
     val state by reader.state.collectAsStateWithLifecycle()
     val content by reader.content.collectAsStateWithLifecycle()
-    val cardSetting by c.settings.playerCard.collectAsStateWithLifecycle()
     val rewindSeconds by c.settings.rewindSeconds.collectAsStateWithLifecycle()
-    val cardRequested by c.playerCardRequest.collectAsStateWithLifecycle()
-    // Opening the app from the playback notification shows the card for this visit.
-    var cardForced by remember { mutableStateOf(false) }
+    val expandRequested by c.playerExpandRequest.collectAsStateWithLifecycle()
+    // The player starts collapsed, except when the app is opened from the playback notification.
+    var playerExpanded by rememberSaveable { mutableStateOf(false) }
     // Only the now-playing screen (docId == null), which is where the notification leads, takes the
     // request; an article screen underneath it would otherwise use it up first.
-    LaunchedEffect(cardRequested) {
-        if (cardRequested && docId == null) {
-            cardForced = true
-            c.playerCardRequest.value = false
+    LaunchedEffect(expandRequested) {
+        if (expandRequested && docId == null) {
+            playerExpanded = true
+            c.playerExpandRequest.value = false
         }
     }
-    val showCard = (cardSetting || cardForced) && state.docId != null
 
     LaunchedEffect(docId) {
         if (docId != null && reader.content.value?.docId != docId) reader.openFromLibrary(docId, autoplay = false)
@@ -213,18 +212,10 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                         IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
                     }
                     val meta = current?.let { c.library.meta(it.docId) }
-                    if (state.docId != null || meta?.source?.startsWith("http") == true) {
+                    if (meta?.source?.startsWith("http") == true) {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (state.docId != null) {
-                            DropdownMenuItem(text = { Text(if (showCard) "Hide player" else "Show player") }, onClick = {
-                                menuOpen = false
-                                val show = !showCard
-                                cardForced = false
-                                c.settings.setPlayerCard(show)
-                            })
-                        }
                         if (meta != null && meta.source.startsWith("http")) {
                             DropdownMenuItem(text = { Text("Open original") }, onClick = {
                                 menuOpen = false
@@ -255,7 +246,22 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 },
             )
         },
-        bottomBar = { if (state.docId != null && !showCard) PlayerBar(state, reader) },
+        bottomBar = {
+            if (state.docId != null) {
+                val playing = c.library.meta(state.docId!!)
+                NowPlayingBar(
+                    state = state,
+                    content = content,
+                    reader = reader,
+                    rewindSeconds = rewindSeconds,
+                    expanded = playerExpanded,
+                    onExpandedChange = { playerExpanded = it },
+                    onVoices = onVoices,
+                    source = playing?.source,
+                    kind = playing?.kind,
+                )
+            }
+        },
     ) { padding ->
         if (layout == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -268,20 +274,6 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
         val activeSegment = current?.segments?.getOrNull(state.currentIndex)
         Column(Modifier.fillMaxSize().padding(padding)) {
         if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (showCard) {
-            PlayerCard(
-                state = state,
-                content = current,
-                reader = reader,
-                rewindSeconds = rewindSeconds,
-                onVoices = onVoices,
-                onHide = {
-                    cardForced = false
-                    c.settings.setPlayerCard(false)
-                },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-        }
         state.notice?.let { notice ->
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -428,7 +420,8 @@ private fun ParagraphText(
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         text = text,
-        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp, lineHeight = 30.sp),
+        // Article text keeps the phone's font; Figtree is for the interface.
+        style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Default, fontSize = 19.sp, lineHeight = 30.sp),
         onTextLayout = { layoutResult = it },
         modifier = Modifier
             .fillMaxWidth()

@@ -127,6 +127,19 @@ object WebArticleExtractor {
         }.ifBlank { title }
     }
 
+    /** An address with a scheme, or a host followed by a path ("example.com/a"), so "Node.js" doesn't count. */
+    private val URL_LIKE = Regex("""^(https?://\S+|[\w-]+(\.[\w-]+)*\.[a-z]{2,}/\S*)$""", RegexOption.IGNORE_CASE)
+
+    /** Whether [title] is just a web address, as when a share's subject is the link itself. */
+    fun looksLikeUrl(title: String): Boolean = title.trim().let { it.isNotEmpty() && ' ' !in it && URL_LIKE.matches(it.removeSuffix("…")) }
+
+    /**
+     * A readable title for an item whose saved title is a web address: the words from the
+     * address ("My 21st birthday"), or [title] unchanged.
+     */
+    fun displayTitle(title: String, source: String): String =
+        if (looksLikeUrl(title)) slugTitle(source) ?: slugTitle(title.let { if ("://" in it) it else "https://$it" }) ?: title else title
+
     /** "/2026/11/why-cats-purr-12345.html" -> "Why cats purr". */
     fun slugTitle(url: String): String? {
         val path = url.substringAfter("://").substringAfter('/', "").substringBefore('?').substringBefore('#')

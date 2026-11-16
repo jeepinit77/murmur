@@ -476,7 +476,7 @@ class Reader(
             onNotificationEnded()
             return
         }
-        library.setProgress(content.docId, 0)
+        library.setFinished(content.docId, true)
         val nextId = queue.removeFirstOrNull()
         _state.update { it.copy(queueSize = queue.size) }
         if (nextId != null) {

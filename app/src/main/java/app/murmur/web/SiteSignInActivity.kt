@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import app.murmur.container
-import app.murmur.ui.MurmurTheme
+import app.murmur.ui.theme.MurmurTheme
 import kotlinx.coroutines.launch
 
 /**

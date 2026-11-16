@@ -104,6 +104,9 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            AppearanceSettings()
+
+            HorizontalDivider()
             Section("Reading speed: ${formatSpeed(speed)}")
             Slider(
                 value = speed,

@@ -12,8 +12,11 @@ import app.murmur.settings.Settings
 import app.murmur.text.Document
 import app.murmur.text.SentenceSegmenter
 import app.murmur.text.WebArticleExtractor
+import app.murmur.web.ExtractOptions
 import app.murmur.web.PositionMapper
 import app.murmur.web.SharedLink
+import app.murmur.web.SiteIcons
+import app.murmur.web.WebImport
 import app.murmur.web.UrlNormalizer
 import app.murmur.web.WebImporter
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +33,7 @@ class Imports(
     private val web: WebImporter,
     private val library: LibraryStore,
     private val settings: Settings,
+    private val siteIcons: SiteIcons,
 ) {
     /** A document in the library, and whether it was already there. */
     class Outcome(val meta: DocMeta, val document: Document, val existing: Boolean)
@@ -64,10 +68,10 @@ class Imports(
         val normalized = UrlNormalizer.normalize(url)
         if (!importAgain) existing(UrlNormalizer.key(normalized))?.let { return it }
         val result = try {
-            web.import(normalized, settings.extractOptions(), titleHint, onStage)
+            webImport(normalized, settings.extractOptions(), titleHint, onStage)
         } catch (e: ImportException) {
             if (e.retryable && !(importAgain && existing(UrlNormalizer.key(normalized)) != null)) {
-                val title = titleHint ?: WebArticleExtractor.slugTitle(normalized) ?: UrlNormalizer.displayHost(normalized) ?: normalized
+                val title = titleHint?.takeUnless { WebArticleExtractor.looksLikeUrl(it) } ?: WebArticleExtractor.slugTitle(normalized) ?: UrlNormalizer.displayHost(normalized) ?: normalized
                 val pending = library.findByUrlKey(UrlNormalizer.key(normalized))
                     ?: library.addPending(title, normalized, listOf(UrlNormalizer.key(normalized)), e.message)
                 scheduleRetry(pending.id)
@@ -103,7 +107,7 @@ class Imports(
     suspend fun reload(id: String, onStage: (String) -> Unit = {}): Pair<Outcome, Int> {
         val meta = library.meta(id) ?: throw ImportException("This item is no longer in the library")
         val old = library.load(id)
-        val result = web.import(meta.source, settings.extractOptions(), meta.title, onStage)
+        val result = webImport(meta.source, settings.extractOptions(), meta.title, onStage)
         val doc = result.imported.document
         val segmenter = SentenceSegmenter()
         val (newSegments, index) = withContext(Dispatchers.Default) {
@@ -124,7 +128,7 @@ class Imports(
     suspend fun completePending(id: String): Outcome {
         val meta = library.meta(id) ?: throw ImportException("This item is no longer in the library")
         try {
-            val result = web.import(meta.source, settings.extractOptions(), meta.title)
+            val result = webImport(meta.source, settings.extractOptions(), meta.title)
             val doc = result.imported.document
             val count = withContext(Dispatchers.Default) { SentenceSegmenter().segment(doc).size }
             val updated = library.replace(id, doc, result.imported.source, result.imported.kind, count, result.urlKeys)
@@ -145,6 +149,10 @@ class Imports(
     /** A ready saved copy of [url] in the library, if there is one. */
     suspend fun savedCopy(url: String): DocMeta? =
         library.findByUrlKey(UrlNormalizer.key(UrlNormalizer.normalize(url)))?.takeIf { it.status == DocStatus.READY }
+
+    /** Imports a page and starts downloading its site icon in the background. */
+    private suspend fun webImport(url: String, options: ExtractOptions, titleHint: String?, onStage: (String) -> Unit = {}): WebImport =
+        web.import(url, options, titleHint, onStage).also { siteIcons.fetch(it.imported.source, it.iconUrls) }
 
     private suspend fun existing(vararg keys: String): Outcome? {
         val meta = library.findByUrlKey(*keys)?.takeIf { it.status == DocStatus.READY } ?: return null

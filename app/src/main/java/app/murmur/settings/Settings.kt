@@ -2,6 +2,8 @@ package app.murmur.settings
 
 import android.content.Context
 import androidx.core.content.edit
+import app.murmur.ui.theme.Palette
+import app.murmur.ui.theme.ThemeMode
 import app.murmur.web.CodeMode
 import app.murmur.web.ExtractOptions
 import app.murmur.web.TableMode
@@ -62,10 +64,6 @@ class Settings(context: Context) {
     /** How far the Rewind button goes back, in seconds of listening. */
     val rewindSeconds: StateFlow<Int> = _rewindSeconds.asStateFlow()
 
-    private val _playerCard = MutableStateFlow(prefs.getBoolean(KEY_PLAYER_CARD, false))
-    /** Show the player card at the top of the reader. */
-    val playerCard: StateFlow<Boolean> = _playerCard.asStateFlow()
-
     private val _shareMode = MutableStateFlow(
         runCatching { ShareMode.valueOf(prefs.getString(KEY_SHARE_MODE, null) ?: "") }.getOrDefault(ShareMode.REPLACE),
     )
@@ -104,6 +102,27 @@ class Settings(context: Context) {
     private val _soundCues = MutableStateFlow(prefs.getBoolean(KEY_SOUND_CUES, true))
     /** A quiet tone while audio is being prepared, and a short sound when reading can't start. */
     val soundCues: StateFlow<Boolean> = _soundCues.asStateFlow()
+
+    // ---- Appearance ----------------------------------------------------------------------
+
+    private val _themeMode = MutableStateFlow(enumPref(KEY_THEME_MODE, ThemeMode.SYSTEM))
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+    fun setThemeMode(m: ThemeMode) {
+        _themeMode.value = m
+        prefs.edit { putString(KEY_THEME_MODE, m.name) }
+    }
+
+    private val _palette = MutableStateFlow(enumPref(KEY_PALETTE, Palette.VIOLET))
+    val palette: StateFlow<Palette> = _palette.asStateFlow()
+    fun setPalette(p: Palette) {
+        _palette.value = p
+        prefs.edit { putString(KEY_PALETTE, p.name) }
+    }
+
+    private val _blackBackground = MutableStateFlow(prefs.getBoolean(KEY_BLACK_BACKGROUND, false))
+    /** Pure black instead of dark gray in the dark theme. */
+    val blackBackground: StateFlow<Boolean> = _blackBackground.asStateFlow()
+    fun setBlackBackground(on: Boolean) = putBool(KEY_BLACK_BACKGROUND, on, _blackBackground)
 
     fun extractOptions() = ExtractOptions(
         headingsAsChapters = headingsAsChapters.value,
@@ -227,8 +246,6 @@ class Settings(context: Context) {
         prefs.edit { putInt(KEY_REWIND, seconds) }
     }
 
-    fun setPlayerCard(on: Boolean) = putBool(KEY_PLAYER_CARD, on, _playerCard)
-
     fun setShareMode(m: ShareMode) {
         _shareMode.value = m
         prefs.edit { putString(KEY_SHARE_MODE, m.name) }
@@ -257,7 +274,6 @@ class Settings(context: Context) {
         private const val KEY_SHARE_MODE = "share_mode"
         private const val KEY_SAVED_PAGE = "saved_page_mode"
         private const val KEY_REWIND = "rewind_seconds"
-        private const val KEY_PLAYER_CARD = "player_card"
         /** Choices for [rewindSeconds]. */
         val REWIND_CHOICES = listOf(5, 10, 15, 30, 60)
         private const val KEY_HEADINGS = "web_headings_as_chapters"
@@ -268,6 +284,9 @@ class Settings(context: Context) {
         private const val KEY_CODE = "web_code"
         private const val KEY_KEEP_PLAYING = "keep_playing_while_loading"
         private const val KEY_SOUND_CUES = "sound_cues"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_PALETTE = "palette"
+        private const val KEY_BLACK_BACKGROUND = "black_background"
         private const val KEY_LANG_VOICE = "voice_for_"
         private const val KEY_CLIPBOARD_DISMISSED = "clipboard_dismissed"
         private const val KEY_NR_ENABLED = "notification_reading"

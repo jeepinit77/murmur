@@ -10,6 +10,7 @@ import app.murmur.library.PendingTableSummaries
 import app.murmur.notifications.NotificationInbox
 import app.murmur.notifications.NotificationReaderService
 import app.murmur.web.PageFetcher
+import app.murmur.web.SiteIcons
 import app.murmur.web.WebImporter
 import app.murmur.web.tableAi
 import app.murmur.web.WebViewRenderer
@@ -105,7 +106,9 @@ class AppContainer(context: Context) {
     val tableAi = tableAi(context, appScope)
     val importer = Importer(context, settings, tableAi)
     val web = WebImporter(PageFetcher(http), WebViewRenderer(context), importer::readPdf, tableAi)
-    val imports = Imports(context, importer, web, library, settings)
+    /** Site icons for library rows. */
+    val siteIcons = SiteIcons(context, http, appScope)
+    val imports = Imports(context, importer, web, library, settings, siteIcons)
     val reader = Reader(context, appScope, voices, settings, library)
     /** Table summaries postponed because Gemini Nano only runs while Murmur is on screen. */
     val pendingTables = PendingTableSummaries(library, settings, tableAi, reader, appScope)
@@ -113,8 +116,8 @@ class AppContainer(context: Context) {
     val cues = SoundCues(reader, settings, appScope).also { it.start() }
     /** Notifications from other apps waiting to be read; kept in memory only. */
     val notificationInbox = NotificationInbox(context, settings, voices, reader, appScope)
-    /** Set when the app is opened from the playback notification; the reader shows its player card and clears it. */
-    val playerCardRequest = MutableStateFlow(false)
+    /** Set when the app is opened from the playback notification; the player opens expanded and clears it. */
+    val playerExpandRequest = MutableStateFlow(false)
 }
 
 val Context.container: AppContainer get() = (applicationContext as MurmurApp).container

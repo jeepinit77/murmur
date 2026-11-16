@@ -72,6 +72,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     private val dir = File(context.filesDir, "library").apply { mkdirs() }
     private val indexFile = File(dir, "index.json")
     private val progressPrefs = context.getSharedPreferences("progress", Context.MODE_PRIVATE)
+    private val finishedPrefs = context.getSharedPreferences("finished", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private val loaded = CompletableDeferred<Unit>()
@@ -84,6 +85,10 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     private val _progress = MutableStateFlow<Map<String, Int>>(emptyMap())
     val progress: StateFlow<Map<String, Int>> = _progress.asStateFlow()
 
+    private val _finished = MutableStateFlow<Set<String>>(emptySet())
+    /** Items listened to the end, or marked as done. */
+    val finished: StateFlow<Set<String>> = _finished.asStateFlow()
+
     init {
         scope.launch(Dispatchers.IO) {
             val list = runCatching {
@@ -92,6 +97,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
             }.getOrDefault(emptyList())
             _docs.value = list.sortedByDescending { it.addedAt }
             _progress.value = list.associate { it.id to progressPrefs.getInt(it.id, 0) }
+            _finished.value = list.mapTo(mutableSetOf()) { it.id }.filterTo(mutableSetOf()) { finishedPrefs.getBoolean(it, false) }
             loaded.complete(Unit)
             backfill()
         }
@@ -249,6 +255,8 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
                 _docs.value = list
                 progressPrefs.edit { remove(id) }
                 _progress.value = _progress.value - id
+                finishedPrefs.edit { remove(id) }
+                _finished.value = _finished.value - id
             }
         }
     }
@@ -258,6 +266,18 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     fun setProgress(id: String, segmentIndex: Int) {
         _progress.value = _progress.value + (id to segmentIndex)
         progressPrefs.edit { putInt(id, segmentIndex) }
+        // Listening to a finished item again moves it back to Reading.
+        if (segmentIndex > 0 && id in _finished.value) setFinished(id, false)
+    }
+
+    /** Marks an item as done or not, starting it from the beginning next time either way. */
+    fun setFinished(id: String, done: Boolean) {
+        _finished.value = if (done) _finished.value + id else _finished.value - id
+        finishedPrefs.edit { if (done) putBoolean(id, true) else remove(id) }
+        if (_progress.value[id] != 0) {
+            _progress.value = _progress.value + (id to 0)
+            progressPrefs.edit { putInt(id, 0) }
+        }
     }
 
     private fun writeIndex(list: List<DocMeta>) {
