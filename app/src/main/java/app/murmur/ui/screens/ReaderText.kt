@@ -9,6 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.TextDecrease
+import androidx.compose.material.icons.filled.TextIncrease
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ColorScheme
@@ -120,6 +127,9 @@ private fun ColorScheme.onPaper(paper: Paper): ColorScheme {
         // The reading highlight: the accent color, faded into the page.
         primaryContainer = lerp(bg, primary, if (bg.luminance() > 0.5f) 0.22f else 0.35f),
         onPrimaryContainer = paper.text,
+        // Selected choices in the text settings.
+        secondaryContainer = lerp(bg, primary, if (bg.luminance() > 0.5f) 0.18f else 0.3f),
+        onSecondaryContainer = paper.text,
     )
 }
 
@@ -169,14 +179,12 @@ internal fun ReaderTextControls() {
     val keepScreenOn by settings.keepScreenOn.collectAsStateWithLifecycle()
 
     ColorRow(colors, settings::setReadingColors)
-    SliderRow(
-        title = "Text size",
-        value = "$size",
-        position = size.toFloat(),
-        range = Settings.MIN_TEXT_SIZE.toFloat()..Settings.MAX_TEXT_SIZE.toFloat(),
-        onChange = { settings.setTextSize(it.roundToInt()) },
+    TextSizeRow(size, settings::setTextSize)
+    SegmentedRow(
+        "Font", ReaderFont.entries, font, { it.label }, settings::setReaderFont,
+        // Each choice is shown in its own typeface.
+        labelFamily = { if (it == ReaderFont.SERIF) FontFamily.Serif else FontFamily.Default },
     )
-    SegmentedRow("Font", ReaderFont.entries, font, { it.label }, settings::setReaderFont)
     SegmentedRow("Line spacing", LineSpacing.entries, spacing, { it.label }, settings::setLineSpacing)
     SegmentedRow("Margins", ReaderMargins.entries, margins, { it.label }, settings::setReaderMargins)
     SwitchRow(
@@ -206,7 +214,7 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
                 ) {
                     Box(
                         Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
                             .background(paper.background)
                             .border(
@@ -231,17 +239,57 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
     }
 }
 
+/** Text size: smaller and larger buttons on either side of a slider, with the size in the title line. */
 @Composable
-private fun <T> SegmentedRow(title: String, options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+private fun TextSizeRow(size: Int, onChange: (Int) -> Unit) {
+    val min = Settings.MIN_TEXT_SIZE
+    val max = Settings.MAX_TEXT_SIZE
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Text size", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text("$size", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onChange(size - 1) }, enabled = size > min, modifier = Modifier.offset(x = (-12).dp)) {
+                Icon(Icons.Default.TextDecrease, "Smaller text")
+            }
+            SlimSlider(
+                value = size.toFloat(),
+                onValueChange = { onChange(it.roundToInt()) },
+                valueRange = min.toFloat()..max.toFloat(),
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { onChange(size + 1) }, enabled = size < max, modifier = Modifier.offset(x = 12.dp)) {
+                Icon(Icons.Default.TextIncrease, "Larger text")
+            }
+        }
+    }
+}
+
+/** A title with its choices beside it, as a segmented button. */
+@Composable
+private fun <T> SegmentedRow(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    labelFamily: (T) -> FontFamily? = { null },
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(112.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
             options.forEachIndexed { i, option ->
                 SegmentedButton(
                     selected = option == selected,
                     onClick = { onSelect(option) },
                     shape = SegmentedButtonDefaults.itemShape(i, options.size),
-                ) { Text(label(option), maxLines = 1) }
+                    // No check mark: the selected choice is filled, and the labels need the room.
+                    icon = {},
+                ) { Text(label(option), maxLines = 1, softWrap = false, fontFamily = labelFamily(option)) }
             }
         }
     }

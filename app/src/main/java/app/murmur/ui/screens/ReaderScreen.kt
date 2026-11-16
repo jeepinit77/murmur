@@ -80,6 +80,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 import androidx.core.view.ViewCompat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -533,7 +535,8 @@ private fun ReaderScreenBody(
                                     Column {
                                         Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         // Reading time left; while listening, the player shows listening time.
-                                        if (!listening && totalWords > 0) {
+                                        // In reader mode, the bottom bar shows it.
+                                        if (!listening && totalWords > 0 && !readerMode) {
                                             Text(
                                                 "${ListeningTime.readingLabel(totalWords - wordsRead)} left",
                                                 style = MaterialTheme.typography.labelMedium,
@@ -632,6 +635,67 @@ private fun ReaderScreenBody(
             )
         }
 
+        // Reader mode's bottom bar: where you are, and a slider to move through the article.
+        if (readerMode) {
+            AnimatedVisibility(
+                visible = showChrome && layout != null,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                val cur = current
+                val segs = cur?.segments.orEmpty()
+                val chapterTitle = cur?.document?.chapters?.takeIf { it.size >= 2 }
+                    ?.getOrNull(segs.getOrNull(readingAt)?.chapter ?: -1)?.title
+                var dragging by remember { mutableStateOf<Float?>(null) }
+                /** The row holding the word [fraction] of the way through the article. */
+                fun rowAt(fraction: Float): Int {
+                    val words = wordsBefore ?: return 0
+                    val target = fraction * totalWords
+                    var lo = 0
+                    var hi = segs.size - 1
+                    while (lo < hi) {
+                        val mid = (lo + hi + 1) / 2
+                        if (words[mid] <= target) lo = mid else hi = mid - 1
+                    }
+                    return layout?.second?.getOrNull(lo) ?: 0
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth().onSizeChanged { bottomHeight = it.height },
+                ) {
+                    Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                chapterTitle.orEmpty(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 12.dp),
+                            )
+                            val drag = dragging
+                            Text(
+                                if (drag != null) "${(drag * 100).roundToInt()}%"
+                                else "${(progress * 100).roundToInt()}% · ${ListeningTime.readingLabel(totalWords - wordsRead)} left",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        SlimSlider(
+                            value = dragging ?: progress,
+                            onValueChange = { f ->
+                                dragging = f
+                                scope.launch { listState.scrollToItem(rowAt(f)) }
+                            },
+                            onValueChangeFinished = { dragging = null },
+                            valueRange = 0f..1f,
+                        )
+                    }
+                }
+            }
+        }
+
         // Reader mode is for reading: no player. Listen from here in the menu goes back to listening.
         AnimatedVisibility(
             visible = showChrome && !readerMode,
@@ -692,13 +756,14 @@ private fun ReaderScreenBody(
         )
     }
     if (textSheetOpen) {
-        ModalBottomSheet(onDismissRequest = { textSheetOpen = false }) {
+        // No dimming, so the article above the sheet shows each change as it's made.
+        ModalBottomSheet(onDismissRequest = { textSheetOpen = false }, scrimColor = Color.Transparent) {
             Text(
                 "Text settings",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 8.dp, end = 8.dp, bottom = 24.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
                 ReaderTextControls()
             }
         }
