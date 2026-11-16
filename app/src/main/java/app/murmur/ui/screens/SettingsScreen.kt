@@ -345,7 +345,8 @@ private fun ReadingSettings() {
             choices = listOfNotNull(
                 Choice(TableMode.SKIP, "Skip"),
                 Choice(TableMode.READ, "Read row by row"),
-                tableAi?.let {
+                // Left out on phones that can't run Gemini Nano, rather than shown as unavailable.
+                tableAi?.takeIf { aiStatus != TableAiStatus.UNSUPPORTED && aiStatus != TableAiStatus.ERROR }?.let {
                     Choice(
                         TableMode.SUMMARIZE,
                         "Summarize with AI",
@@ -354,8 +355,7 @@ private fun ReadingSettings() {
                             TableAiStatus.READY -> "Uses Gemini Nano on this phone. Tables with fewer than 4 rows are read row by row."
                             TableAiStatus.NEEDS_DOWNLOAD -> "Uses Gemini Nano, which will download to this phone. Tables are read row by row until it's ready."
                             TableAiStatus.DOWNLOADING -> "Gemini Nano is downloading. Tables are read row by row until it's ready."
-                            TableAiStatus.UNSUPPORTED, TableAiStatus.ERROR -> "Not available on this phone. Requires Gemini Nano."
-                            null -> null
+                            TableAiStatus.UNSUPPORTED, TableAiStatus.ERROR, null -> null
                         },
                     )
                 },
