@@ -126,7 +126,7 @@ Articles can be read on screen as well as listened to, without getting in the wa
 - One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
 - **Reader mode** (a toggle in the top bar): full screen, with only a thin progress line at the bottom. The top bar, the player bar and the phone's status and navigation bars slide away. A tap shows or hides them and never starts listening, so getting ready to select text is safe. Scrolling down hides them again, scrolling up brings them back, and Back turns reader mode off. The screen doesn't follow the voice in reader mode.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
-- **Text settings** (the text size button, also in Settings → Appearance → Reader): colors (Match app, White, Sepia, Dark, Black), text size, sans serif or serif, line spacing, margins (Narrow, Normal, Wide), and **Keep screen on** while reading.
+- **Text settings** apply only in reader mode, and their button only shows there (also in Settings → Appearance → Reader mode). Outside reader mode, articles use the standard style. They include: colors (Match app, White, Sepia, Dark, Black), text size, sans serif or serif, line spacing, margins (Narrow, Normal, Wide), and **Keep screen on** while reading.
 - The top bar shows reading time left under the title once the header scrolls away.
 - Long press selects text, with Copy and Select all. Outside reader mode, a tap listens from that sentence.
 - The header shows listening and reading time ("51 min listen · 34 min read").

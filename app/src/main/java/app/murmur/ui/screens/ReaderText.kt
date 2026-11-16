@@ -75,6 +75,21 @@ internal fun rememberArticleStyles(): ArticleStyles {
     )
 }
 
+/** Article styles outside reader mode, where the text settings don't apply. */
+@Composable
+internal fun standardArticleStyles(): ArticleStyles {
+    val size = Settings.DEFAULT_TEXT_SIZE
+    return ArticleStyles(
+        body = MaterialTheme.typography.bodyLarge.copy(
+            fontFamily = FontFamily.Default,
+            fontSize = size.sp,
+            lineHeight = (size * LineSpacing.NORMAL.multiplier).sp,
+        ),
+        heading = MaterialTheme.typography.titleLarge,
+        margin = ReaderMargins.NORMAL.dp,
+    )
+}
+
 /** Background, text and secondary text colors for a reading color choice; null for Match app. */
 private class Paper(val background: Color, val text: Color, val secondary: Color)
 
@@ -109,19 +124,21 @@ private fun ColorScheme.onPaper(paper: Paper): ColorScheme {
 }
 
 /**
- * The reader's colors: the app theme, or White, Sepia, Dark or Black, with the status and
+ * Reader mode's colors: the app theme, or White, Sepia, Dark or Black, with the status and
  * navigation bar icons to match while the reader is open.
  */
 @Composable
-internal fun ReadingTheme(content: @Composable () -> Unit) {
+internal fun ReadingTheme(enabled: Boolean, content: @Composable () -> Unit) {
+    // Always the same structure, so turning reader mode on or off keeps the screen's state.
     val settings = LocalContext.current.container.settings
     val choice by settings.readingColors.collectAsStateWithLifecycle()
-    val paper = choice.paper()
+    val paper = if (enabled) choice.paper() else null
     val base = MaterialTheme.colorScheme
     val scheme = remember(base, paper) { paper?.let { base.onPaper(it) } ?: base }
     val view = LocalView.current
     val lightPage = scheme.background.luminance() > 0.5f
-    DisposableEffect(view, lightPage) {
+    DisposableEffect(view, lightPage, enabled) {
+        if (!enabled) return@DisposableEffect onDispose { }
         val window = (view.context as? android.app.Activity)?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val before = controller?.isAppearanceLightStatusBars
@@ -140,7 +157,7 @@ internal fun ReadingTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** Text size, font, line spacing, margins, colors and Keep screen on, for the reader's sheet and Settings. */
+/** Reader mode's colors, text size, font, line spacing, margins and Keep screen on, for its sheet and Settings. */
 @Composable
 internal fun ReaderTextControls() {
     val settings = LocalContext.current.container.settings
@@ -164,7 +181,7 @@ internal fun ReaderTextControls() {
     SegmentedRow("Margins", ReaderMargins.entries, margins, { it.label }, settings::setReaderMargins)
     SwitchRow(
         title = "Keep screen on",
-        description = "While reading an article that isn't playing",
+        description = "While reader mode is on",
         checked = keepScreenOn,
         onChange = settings::setKeepScreenOn,
     )

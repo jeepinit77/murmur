@@ -163,12 +163,24 @@ private fun firstSegmentOfRows(rows: List<ReaderRow>, segmentCount: Int): IntArr
 
 @Composable
 fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String? = null) {
-    ReadingTheme { ReaderScreenBody(docId, onBack, onVoices, initialFind) }
+    // Reader mode: full screen, with the text settings and reading colors. Outside it, articles
+    // use the standard style and taps listen from that sentence.
+    var readerMode by rememberSaveable { mutableStateOf(false) }
+    ReadingTheme(enabled = readerMode) {
+        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderModeChange = { readerMode = it })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String?) {
+private fun ReaderScreenBody(
+    docId: String?,
+    onBack: () -> Unit,
+    onVoices: () -> Unit,
+    initialFind: String?,
+    readerMode: Boolean,
+    onReaderModeChange: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
     val c = context.container
     val scope = rememberCoroutineScope()
@@ -213,10 +225,8 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
     val layout = remember(current) { current?.let { buildRows(it) } }
     val rowStarts = remember(layout) { layout?.let { firstSegmentOfRows(it.first, current?.segments?.size ?: 0) } }
     val listState = rememberLazyListState()
-    val styles = rememberArticleStyles()
+    val styles = if (readerMode) rememberArticleStyles() else standardArticleStyles()
     var textSheetOpen by remember { mutableStateOf(false) }
-    // Reader mode: see the full screen handling below.
-    var readerMode by rememberSaveable { mutableStateOf(false) }
     // Set when scrolling while reading moved the place; the highlight stays hidden until listening resumes.
     var movedByReading by remember(docId) { mutableStateOf(false) }
 
@@ -279,7 +289,7 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
     val progress = if (totalWords == 0) 0f else wordsRead.toFloat() / totalWords
 
     val keepScreenOn by c.settings.keepScreenOn.collectAsStateWithLifecycle()
-    if (keepScreenOn && current != null && !listening) {
+    if (keepScreenOn && current != null && readerMode) {
         val view = LocalView.current
         DisposableEffect(view) {
             view.keepScreenOn = true
@@ -365,7 +375,7 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
             .collect { atEnd -> if (atEnd) chromeShown = true }
     }
     BackHandler(enabled = readerMode) {
-        readerMode = false
+        onReaderModeChange(false)
         chromeShown = true
     }
     val view = LocalView.current
@@ -501,11 +511,13 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
                                 val doc = current?.document
                                 if (doc != null) {
                                     IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
-                                    IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
+                                    if (readerMode) {
+                                        IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
+                                    }
                                     IconToggleButton(
                                         checked = readerMode,
                                         onCheckedChange = { on ->
-                                            readerMode = on
+                                            onReaderModeChange(on)
                                             chromeShown = !on
                                         },
                                         colors = IconButtonDefaults.iconToggleButtonColors(

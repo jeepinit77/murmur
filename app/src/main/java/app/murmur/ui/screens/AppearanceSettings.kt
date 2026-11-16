@@ -76,7 +76,7 @@ internal fun AppearanceSettings() {
                 }
         }
     }
-    SettingsGroup("Reader") {
+    SettingsGroup("Reader mode") {
         ReaderTextControls()
     }
 }
