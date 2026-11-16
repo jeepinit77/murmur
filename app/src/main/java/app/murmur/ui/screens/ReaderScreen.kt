@@ -1,6 +1,18 @@
 package app.murmur.ui.screens
 
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import app.murmur.library.DocMeta
+import app.murmur.library.DocStatus
+import app.murmur.ui.library.DocIcon
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -80,13 +92,19 @@ private fun buildRows(content: ReaderContent): Pair<List<ReaderRow>, IntArray> {
     val rowOfSegment = IntArray(content.segments.size)
     val byParagraph = content.segments.groupBy { it.chapter to it.paragraph }
     val doc = content.document
-    if (doc.siteName != null || doc.author != null || doc.published != null || doc.incomplete) rows += ReaderRow.Header(doc)
+    rows += ReaderRow.Header(doc)
     content.document.chapters.forEachIndexed { c, chapter ->
         val title = chapter.title
         // EPUB chapters usually repeat their title as the first paragraph; don't show it twice.
         if (!title.isNullOrBlank() && chapter.paragraphs.firstOrNull() != title) rows += ReaderRow.Heading(title)
         chapter.paragraphs.forEachIndexed { p, text ->
             val segs = byParagraph[c to p].orEmpty()
+            // Articles often start with their title, which the header already shows. It's still
+            // read aloud; following along stays on the header meanwhile.
+            if (c == 0 && p == 0 && text.trim().equals(doc.title.trim(), ignoreCase = true)) {
+                segs.forEach { rowOfSegment[it.index] = 0 }
+                return@forEachIndexed
+            }
             segs.forEach { rowOfSegment[it.index] = rows.size }
             rows += ReaderRow.Paragraph(c, p, text, segs)
         }
@@ -126,6 +144,7 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
     val current = content?.takeIf { docId == null || it.docId == docId }
     val layout = remember(current) { current?.let { buildRows(it) } }
     val listState = rememberLazyListState()
+    val headerHidden by remember(layout) { derivedStateOf { layout == null || listState.firstVisibleItemIndex > 0 } }
     var userScrolled by remember { mutableStateOf(false) }
 
     // Find in article: null when the find bar is closed.
@@ -201,7 +220,11 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 return@Scaffold
             }
             TopAppBar(
-                title = { Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    AnimatedVisibility(visible = headerHidden, enter = fadeIn(), exit = fadeOut()) {
+                        Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
                 navigationIcon = { BackIcon(onBack) },
                 actions = {
                     val doc = current?.document
@@ -289,7 +312,7 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
         ) {
             itemsIndexed(rows) { _, row ->
                 when (row) {
-                    is ReaderRow.Header -> ArticleHeader(row.document)
+                    is ReaderRow.Header -> ArticleHeader(row.document, current?.let { c.library.meta(it.docId) }, state.speed)
                     is ReaderRow.Heading -> Text(
                         row.text,
                         style = MaterialTheme.typography.titleLarge,
@@ -325,26 +348,52 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
     }
 }
 
-/** Site, author and date above a web article, plus a note when it may be cut off. */
+/**
+ * The top of the document: the site's icon and name, the title, then author, date and listening
+ * time, plus a note when a web article may be cut off.
+ */
 @Composable
-private fun ArticleHeader(document: Document) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        val line = listOfNotNull(document.siteName, document.author, PageMetadata.formatDate(document.published))
-        if (line.isNotEmpty()) {
-            Text(
-                line.joinToString(" · "),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+private fun ArticleHeader(document: Document, meta: DocMeta?, speed: Float) {
+    val colors = MaterialTheme.colorScheme
+    val words = remember(document) { document.chapters.sumOf { ch -> ch.paragraphs.sumOf { ListeningTime.words(it) } } }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)) {
+        val site = document.siteName
+        if (site != null && meta != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                DocIcon(meta.source, meta.kind, DocStatus.READY, size = 24.dp)
+                Text(
+                    site,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            }
         }
+        Text(document.title, style = MaterialTheme.typography.headlineMedium)
+        val line = listOfNotNull(document.author, PageMetadata.formatDate(document.published), ListeningTime.label(words, speed))
+        Text(
+            line.joinToString(" · "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
         if (document.incomplete) {
-            Text(
-                "May be incomplete. Sign in to the site from the menu, then reload.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            Surface(
+                color = colors.tertiaryContainer,
+                contentColor = colors.onTertiaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            ) {
+                Text(
+                    "May be incomplete. Sign in to the site from the menu, then reload.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
         }
+        HorizontalDivider(Modifier.padding(top = 20.dp, bottom = 4.dp), color = colors.outlineVariant)
     }
 }
 
@@ -403,12 +452,6 @@ private fun ParagraphText(
     val text: AnnotatedString = remember(row, active, found, currentFound, scheme) {
         buildAnnotatedString {
             append(row.text)
-            if (active != null && active.end <= row.text.length) {
-                addStyle(
-                    SpanStyle(background = scheme.primaryContainer, color = scheme.onPrimaryContainer, fontWeight = FontWeight.Medium),
-                    active.start, active.end,
-                )
-            }
             for (m in found) {
                 if (m.end > row.text.length) continue
                 val style = if (m == currentFound) SpanStyle(background = scheme.tertiary, color = scheme.onTertiary)
@@ -418,6 +461,7 @@ private fun ParagraphText(
         }
     }
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val highlight = scheme.primaryContainer.copy(alpha = 0.75f)
     Text(
         text = text,
         // Article text keeps the phone's font; Figtree is for the interface.
@@ -426,6 +470,27 @@ private fun ParagraphText(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
+            .drawBehind {
+                val layout = layoutResult ?: return@drawBehind
+                if (active == null || active.end > row.text.length) return@drawBehind
+                // One rounded bar per line, a little wider than the words and inset from the line
+                // height, so consecutive lines read as separate bars.
+                val padX = 4.dp.toPx()
+                val insetY = 3.dp.toPx()
+                val radius = CornerRadius(6.dp.toPx())
+                val first = layout.getLineForOffset(active.start)
+                val last = layout.getLineForOffset((active.end - 1).coerceAtLeast(active.start))
+                for (line in first..last) {
+                    val left = if (line == first) layout.getHorizontalPosition(active.start, true) else layout.getLineLeft(line)
+                    val right = if (line == last) layout.getHorizontalPosition(active.end, true) else layout.getLineRight(line)
+                    drawRoundRect(
+                        color = highlight,
+                        topLeft = Offset(minOf(left, right) - padX, layout.getLineTop(line) + insetY),
+                        size = Size(kotlin.math.abs(right - left) + 2 * padX, layout.getLineBottom(line) - layout.getLineTop(line) - 2 * insetY),
+                        cornerRadius = radius,
+                    )
+                }
+            }
             .pointerInput(row) {
                 detectTapGestures { pos ->
                     val offset = layoutResult?.getOffsetForPosition(pos) ?: return@detectTapGestures
