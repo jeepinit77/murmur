@@ -55,7 +55,7 @@ Make it easy to listen to a WhatsApp message or conversation.
 **Suggested:** option 1 (Quick Settings tile, now its own Planned item above) and option 3 (exported chats).
 
 ### Notification reading — Built, needs testing on a phone
-Settings → Notifications → Notification reading. Off by default; needs notification access.
+Settings → Notification reading. Off by default; needs notification access.
 - Apps appear in a list after they send a notification. Only checked apps are read; for other apps, only the package name is stored.
 - Murmur posts its own notification for each chat (or each notification from other apps) with Play and Dismiss. Messages that arrive close together are grouped ("Mom · 3 messages"), and the full message text is read, not just what's visible in the notification.
 - Playing pauses what's being read, reads the notification, then resumes at the same sentence. Notification text is kept in memory only and never saved to the library.
@@ -100,7 +100,7 @@ Tapping the Speed button in the media notification opens a speed slider instead 
 ## Voices
 
 ### Remove the Google voices setting — Planned
-Remove the **Google voices** switch from Settings ([SettingsScreen.kt](app/src/main/java/app/murmur/ui/screens/SettingsScreen.kt)), so Google voices appear on the Voice screen without turning them on first (play build, on phones that support them).
+Remove the **Google voices** switch from the bottom of the Voice screen ([VoicesScreen.kt](app/src/main/java/app/murmur/ui/screens/VoicesScreen.kt)), so Google voices appear on the Voice screen without turning them on first (play build, on phones that support them).
 - Today they're opt-in (`requiresOptIn` in [VoiceSource.kt](app/src/main/java/app/murmur/voice/VoiceSource.kt), `googleVoices` in [Settings.kt](app/src/main/java/app/murmur/settings/Settings.kt)), and the voice list only loads after the switch is turned on. Without the switch, the list loads at startup, so check that this doesn't slow down opening the app.
 - On phones where Google voices aren't available, nothing should appear, and no error should be shown.
 - The switch's note that every Google voice can sound the same on some phones goes away with it. To decide: whether to keep that note somewhere, such as on the Voice screen.
@@ -160,7 +160,10 @@ Mark items in the library as done by swiping them, or from the item's menu.
 ### Redesign, phase 2 — In progress
 Bring the rest of the app in line with the library.
 - Done:
-  - Settings and Notification reading: options grouped in rounded cards under section titles, sliders with their value beside the title, rows instead of outlined buttons for actions
+  - Settings opens to a list of categories, each with an icon and a summary of its current values: Voice, Playback, Appearance, Reading, Sharing, Notification reading and About. Each opens its own page, with options grouped in rounded cards
+  - Settings with a few options (Rewind button, Code blocks, Tables, the sharing choices) are one row showing the current choice, which opens a dialog with the options
+  - Voice moved from the library's top bar into Settings (the player's Voice button still opens it); the Google voices switch moved to the Voice screen
+  - Sliders show their value beside the title; actions are rows instead of outlined buttons
   - Voice and Download voices: segmented card lists; the selected voice is highlighted with a check badge, other voices show their initial
   - Reader: a header with the site's icon and name, the title, author, date and listening time. The top bar shows the title only after the header scrolls away, and a first paragraph that repeats the title isn't shown twice. The sentence being read gets rounded bars per line, without changing the font weight
   - Dialogs: Paste text and Web page link show their Add menu icon, open the keyboard right away, and use the web address keyboard for links. Clear and Delete use the error color
