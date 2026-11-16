@@ -79,7 +79,7 @@ Settings → Notification reading. Off by default; needs notification access.
 ### Reader mode — Done
 Articles can be read on screen as well as listened to, without getting in the way of listening.
 - **Open in Murmur** in the share menu popup opens an article straight into the reader.
-- Opening an article while something else plays doesn't interrupt it. The article opens for reading with a **Listen** button that switches the player to it, starting from the top of the screen.
+- Opening an article while something else plays doesn't interrupt it. The article opens for reading with the player bar hidden and a **Play** button that switches the player to it, starting from the top of the screen.
 - One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
 - **Text settings** (the text size button, also in Settings → Appearance → Reader): text size, sans serif or serif, line spacing, and **Keep screen on** while reading.

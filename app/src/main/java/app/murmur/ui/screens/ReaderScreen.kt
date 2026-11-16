@@ -81,7 +81,7 @@ import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.FormatSize
-import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
@@ -381,18 +381,20 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
             )
         },
         floatingActionButton = {
-            // Another item is playing: offer to listen to this one instead, from where the reader is.
+            // Another item is playing: Play switches the player to this one, from where the reader is.
             if (inPlayer == null && current != null) {
                 ExtendedFloatingActionButton(
                     onClick = { listenFromHere() },
                     expanded = !listState.lastScrolledForward,
-                    icon = { Icon(Icons.Default.Headphones, null) },
-                    text = { Text("Listen") },
+                    icon = { Icon(Icons.Default.PlayArrow, null) },
+                    text = { Text("Play") },
                 )
             }
         },
         bottomBar = {
-            if (state.docId != null) {
+            // Hidden while reading an article that isn't the one in the player, so the screen is
+            // only about this article. What's playing carries on, with its notification controls.
+            if (state.docId != null && (docId == null || inPlayer != null)) {
                 val playing = c.library.meta(state.docId!!)
                 NowPlayingBar(
                     state = state,
