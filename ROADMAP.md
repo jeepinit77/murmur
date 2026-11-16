@@ -157,7 +157,7 @@ Mark items in the library as done by swiping them, or from the item's menu.
   - Opens expanded when Murmur is opened from the playback notification; Back or a swipe down collapses it
 - Figtree (OFL) bundled for the interface, so it doesn't depend on the phone's font. Article text keeps the phone's font.
 
-### Redesign, phase 2 — In progress (`redesign-phase-2` branch)
+### Redesign, phase 2 — In progress
 Bring the rest of the app in line with the library.
 - Done:
   - Settings and Notification reading: options grouped in rounded cards under section titles, sliders with their value beside the title, rows instead of outlined buttons for actions
