@@ -80,6 +80,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -208,6 +215,8 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
     val listState = rememberLazyListState()
     val styles = rememberArticleStyles()
     var textSheetOpen by remember { mutableStateOf(false) }
+    // Reader mode: see the full screen handling below.
+    var readerMode by rememberSaveable { mutableStateOf(false) }
     // Set when scrolling while reading moved the place; the highlight stays hidden until listening resumes.
     var movedByReading by remember(docId) { mutableStateOf(false) }
 
@@ -321,8 +330,8 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
     BackHandler(enabled = findQuery != null) { findQuery = null }
 
     // Follow along while speaking, unless the user is scrolling around.
-    LaunchedEffect(state.currentIndex, layout, listening) {
-        if (!listening) return@LaunchedEffect
+    LaunchedEffect(state.currentIndex, layout, listening, readerMode) {
+        if (!listening || readerMode) return@LaunchedEffect
         val rowIndex = layout?.second?.getOrNull(state.currentIndex) ?: return@LaunchedEffect
         if (listState.isScrollInProgress) {
             userScrolled = true
@@ -335,11 +344,12 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
         }
     }
 
-    // Full screen while reading: scrolling down slides the bars and the phone's status and
-    // navigation bars away, and scrolling up (or reaching either end) brings them back. While
-    // listening, finding or loading, the bars stay.
+    // Reader mode, a toggle in the top bar: full screen, and a tap shows or hides the bars instead
+    // of listening from that sentence, so getting ready to select text never starts reading aloud.
+    // Scrolling down hides the bars again; scrolling up or reaching either end brings them back.
+    // Back turns reader mode off. While finding or loading, the bars stay.
     var chromeShown by rememberSaveable { mutableStateOf(true) }
-    val canHideChrome = !listening && findQuery == null && layout != null && !menuOpen
+    val canHideChrome = readerMode && findQuery == null && layout != null && !menuOpen
     val showChrome = chromeShown || !canHideChrome
     val hideOnScroll = remember {
         object : NestedScrollConnection {
@@ -353,6 +363,10 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
     LaunchedEffect(listState) {
         snapshotFlow { !listState.canScrollBackward || !listState.canScrollForward }
             .collect { atEnd -> if (atEnd) chromeShown = true }
+    }
+    BackHandler(enabled = readerMode) {
+        readerMode = false
+        chromeShown = true
     }
     val view = LocalView.current
     DisposableEffect(showChrome) {
@@ -372,7 +386,21 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(hideOnScroll),
+            .nestedScroll(hideOnScroll)
+            // In reader mode, a tap anywhere shows or hides the bars and never reaches the text
+            // (where it would start listening). Long presses still select text.
+            .pointerInput(readerMode) {
+                if (!readerMode) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                    val up = waitForUpOrCancellation(pass = PointerEventPass.Initial) ?: return@awaitEachGesture
+                    val moved = (up.position - down.position).getDistance()
+                    if (moved < viewConfiguration.touchSlop && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
+                        up.consume()
+                        chromeShown = !chromeShown
+                    }
+                }
+            },
     ) {
             if (layout == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -409,7 +437,7 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
                             currentFound = matches.getOrNull(findIndex),
                             style = styles.body,
                             // Tapping a sentence listens from there, but never takes over another item that's playing.
-                            onTapSegment = if (inPlayer == null) null else { seg ->
+                            onTapSegment = if (inPlayer == null || readerMode) null else { seg ->
                                 reader.seekTo(seg.index)
                                 if (!state.playWhenReady) reader.play()
                             },
@@ -474,6 +502,17 @@ private fun ReaderScreenBody(docId: String?, onBack: () -> Unit, onVoices: () ->
                                 if (doc != null) {
                                     IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
                                     IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
+                                    IconToggleButton(
+                                        checked = readerMode,
+                                        onCheckedChange = { on ->
+                                            readerMode = on
+                                            chromeShown = !on
+                                        },
+                                        colors = IconButtonDefaults.iconToggleButtonColors(
+                                            checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        ),
+                                    ) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
                                 }
                                 if (doc != null && doc.chapters.size >= 2) {
                                     IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }

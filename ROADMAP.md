@@ -4,6 +4,49 @@ Planned work for Murmur. Items move to the README's feature list once they ship.
 
 Status: **Done** (on a branch, not released), **In progress**, **Planned**, **Idea** (not decided).
 
+## Before first release
+
+Gaps found in a review of the app (November 2026). The first group is needed for any public release; the rest should be in the first version.
+
+### Release signing key — Planned
+Release builds are signed with the debug key ([app/build.gradle.kts](app/build.gradle.kts)). Create a release key and keep it outside the repository, with a backup. An app published with one key can't switch to another without users uninstalling first.
+
+### Backup rules — Planned
+The manifest allows backup but has no rules, so downloaded voices (30–330 MB each, in `files/voices`) count toward Android's 25 MB cloud backup limit. Once that limit is exceeded, Android skips the backup completely, so the library and settings probably aren't backed up today.
+- Exclude `voices/` and `site-icons/` from cloud backup (`dataExtractionRules` for Android 12+, `fullBackupContent` for older versions)
+- Decide whether device-to-device transfer, which has no size limit, should copy voices
+
+### Library export and import — Planned
+Export the library (documents, progress, Done state) to a file and import it on another phone. Listed under Ideas until now; moved here because a reset or new phone otherwise means starting over.
+
+### About page — Planned
+Today it's one paragraph ([SettingsScreen.kt](app/src/main/java/app/murmur/ui/screens/SettingsScreen.kt)). Add:
+- Version and a link to the source code (GPL-3.0 expects the source to be offered with the app)
+- **Open source licenses**: sherpa-onnx, ONNX Runtime, espeak-ng, pdfbox-android, OkHttp, Commons Compress, AndroidX, Figtree
+- **Voice credits and licenses**, from `voices.json`. Some Piper voices are non-commercial only, so the license should also be visible on the Voice screen.
+- Privacy policy (see below)
+
+### Privacy policy — Planned
+Required for the Play Store, especially with notification access and internet access. Short, since nothing leaves the phone: what's fetched (web pages, site icons, voice downloads) and that notification text is kept in memory only.
+
+### Send feedback — Planned
+There's no crash reporting, which fits the no-tracking promise, but also no way to report a problem.
+- **Send feedback** in About: opens an email or GitHub issue with the app version, Android version, phone model and selected voice filled in
+- Optionally, **Copy diagnostic info** with recent errors, so a problem can be reported without sending anything automatically
+
+### Test before release — Planned
+- Notification reading on a phone (see Notification reading below)
+- Smart web import on common news sites (see Smart web import below)
+- TalkBack: the player card, swipeable rows, filter chips and the reader. People with low vision or dyslexia are likely users of a read-aloud app.
+- Reader text contrast in the dark theme. Article text looked dark gray on a dark background on the emulator (possibly from work in progress).
+
+### Also wanted for the first version
+These are described in their own sections:
+- Sort and select several items to delete (under Ideas → Library)
+- Bookmarks (under Ideas → Reader)
+- Quick Settings tile to read the clipboard (Sharing)
+- Word documents (Importing)
+
 ## In progress
 
 ### Smart web import — In progress
@@ -81,11 +124,11 @@ Articles can be read on screen as well as listened to, without getting in the wa
 - **Open in Murmur** in the share menu popup opens an article straight into the reader.
 - Opening an article while something else plays doesn't interrupt it. The article opens for reading with the player bar hidden and a **Play** button that switches the player to it, starting from the top of the screen.
 - One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
-- Full screen while reading: scrolling down slides away the top bar, the player bar and the phone's status and navigation bars, leaving only a thin progress line at the bottom. Scrolling up or reaching either end brings them back. The bars stay while listening or finding in the article.
+- **Reader mode** (a toggle in the top bar): full screen, with only a thin progress line at the bottom. The top bar, the player bar and the phone's status and navigation bars slide away. A tap shows or hides them and never starts listening, so getting ready to select text is safe. Scrolling down hides them again, scrolling up brings them back, and Back turns reader mode off. The screen doesn't follow the voice in reader mode.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
 - **Text settings** (the text size button, also in Settings → Appearance → Reader): colors (Match app, White, Sepia, Dark, Black), text size, sans serif or serif, line spacing, margins (Narrow, Normal, Wide), and **Keep screen on** while reading.
 - The top bar shows reading time left under the title once the header scrolls away.
-- Long press selects text, with Copy and Select all. A tap still listens from that sentence.
+- Long press selects text, with Copy and Select all. Outside reader mode, a tap listens from that sentence.
 - The header shows listening and reading time ("51 min listen · 34 min read").
 - Not yet: images, tappable links, Share in the selection menu, bookmarks.
 
@@ -231,7 +274,6 @@ Not planned yet. These need a decision before they move up.
 - Sort (date added, title, progress, length)
 - Select several items to delete
 - Tags or folders
-- Export and import the library for backup or moving to a new phone
 
 ### Reader
 - Bookmarks, with a list per document
