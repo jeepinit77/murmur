@@ -80,6 +80,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -301,163 +313,223 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
         }
     }
 
-    Scaffold(
-        topBar = {
-            val query = findQuery
-            if (query != null) {
-                SearchTopBar(
-                    query = query,
-                    placeholder = "Find in article",
-                    onQueryChange = { findQuery = it },
-                    onClose = { findQuery = null },
-                    onSearch = { stepMatch(1) },
-                    actions = {
-                        if (query.isNotBlank()) {
-                            Text(
-                                if (matches.isEmpty()) "0/0" else "${findIndex + 1}/${matches.size}${if (matches.size >= MAX_FIND_MATCHES) "+" else ""}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        IconButton(onClick = { stepMatch(-1) }, enabled = matches.isNotEmpty()) {
-                            Icon(Icons.Default.KeyboardArrowUp, "Previous match")
-                        }
-                        IconButton(onClick = { stepMatch(1) }, enabled = matches.isNotEmpty()) {
-                            Icon(Icons.Default.KeyboardArrowDown, "Next match")
-                        }
-                    },
-                )
-                return@Scaffold
+    // Full screen while reading: scrolling down slides the bars and the phone's status and
+    // navigation bars away, and scrolling up (or reaching either end) brings them back. While
+    // listening, finding or loading, the bars stay.
+    var chromeShown by rememberSaveable { mutableStateOf(true) }
+    val canHideChrome = !listening && findQuery == null && layout != null && !menuOpen
+    val showChrome = chromeShown || !canHideChrome
+    val hideOnScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -SCROLL_SLOP) chromeShown = false
+                else if (available.y > SCROLL_SLOP) chromeShown = true
+                return Offset.Zero
             }
-            TopAppBar(
-                title = {
-                    AnimatedVisibility(visible = headerHidden, enter = fadeIn(), exit = fadeOut()) {
-                        Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                navigationIcon = { BackIcon(onBack) },
-                actions = {
-                    val doc = current?.document
-                    if (doc != null) {
-                        IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
-                        IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
-                    }
-                    if (doc != null && doc.chapters.size >= 2) {
-                        IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
-                    }
-                    val meta = current?.let { c.library.meta(it.docId) }
-                    if (meta?.source?.startsWith("http") == true) {
-                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (meta != null && meta.source.startsWith("http")) {
-                            DropdownMenuItem(text = { Text("Open original") }, onClick = {
-                                menuOpen = false
-                                openInBrowser(context, meta.source)
-                            })
-                            if (meta.isWeb) {
-                                DropdownMenuItem(text = { Text("Reload") }, onClick = {
-                                    menuOpen = false
-                                    reloading = true
-                                    scope.launch {
-                                        try {
-                                            val (outcome, index) = c.imports.reload(meta.id)
-                                            reader.replaceDocument(meta.id, outcome.document, index)
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, e.message ?: "Couldn't reload the article", Toast.LENGTH_LONG).show()
-                                        } finally {
-                                            reloading = false
-                                        }
-                                    }
-                                })
-                            }
-                            DropdownMenuItem(text = { Text("Sign in to site") }, onClick = {
-                                menuOpen = false
-                                context.startActivity(SiteSignInActivity.intent(context, meta.source, meta.id))
-                            })
-                        }
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            // Another item is playing: Play switches the player to this one, from where the reader is.
-            if (inPlayer == null && current != null) {
-                ExtendedFloatingActionButton(
-                    onClick = { listenFromHere() },
-                    expanded = !listState.lastScrolledForward,
-                    icon = { Icon(Icons.Default.PlayArrow, null) },
-                    text = { Text("Play") },
-                )
-            }
-        },
-        bottomBar = {
-            // Hidden while reading an article that isn't the one in the player, so the screen is
-            // only about this article. What's playing carries on, with its notification controls.
-            if (state.docId != null && (docId == null || inPlayer != null)) {
-                val playing = c.library.meta(state.docId!!)
-                NowPlayingBar(
-                    state = state,
-                    content = content,
-                    reader = reader,
-                    rewindSeconds = rewindSeconds,
-                    expanded = playerExpanded,
-                    onExpandedChange = { playerExpanded = it },
-                    onVoices = onVoices,
-                    source = playing?.source,
-                    kind = playing?.kind,
-                )
-            }
-        },
-    ) { padding ->
-        if (layout == null) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                if (state.error != null) Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
-                else CircularProgressIndicator()
-            }
-            return@Scaffold
         }
-        val (rows, _) = layout
-        val activeSegment = current?.takeIf { inPlayer != null && (listening || !movedByReading) }
-            ?.segments?.getOrNull(state.currentIndex)
-        Column(Modifier.fillMaxSize().padding(padding)) {
-        if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.notice?.let { notice ->
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(notice, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onVoices) { Text("Voices") }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { !listState.canScrollBackward || !listState.canScrollForward }
+            .collect { atEnd -> if (atEnd) chromeShown = true }
+    }
+    val view = LocalView.current
+    DisposableEffect(showChrome) {
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (showChrome) controller?.show(WindowInsetsCompat.Type.systemBars())
+        else controller?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+    val density = LocalDensity.current
+    // The top bar's tallest height, so it doesn't shrink while the status bar comes back.
+    var topHeight by remember { mutableStateOf(0) }
+    var bottomHeight by remember { mutableStateOf(0) }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .nestedScroll(hideOnScroll),
+    ) {
+            if (layout == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (state.error != null) Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
+                    else CircularProgressIndicator()
+                }
+                return@Box
+            }
+            val (rows, _) = layout
+            val activeSegment = current?.takeIf { inPlayer != null && (listening || !movedByReading) }
+                ?.segments?.getOrNull(state.currentIndex)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                // The bars float over the article, so hiding them never moves the text.
+                contentPadding = PaddingValues(
+                    start = 20.dp, end = 20.dp,
+                    top = with(density) { topHeight.toDp() } + 16.dp,
+                    bottom = with(density) { bottomHeight.toDp() } + 16.dp,
+                ),
+            ) {
+                itemsIndexed(rows) { _, row ->
+                    when (row) {
+                        is ReaderRow.Header -> ArticleHeader(row.document, current?.let { c.library.meta(it.docId) }, state.speed)
+                        is ReaderRow.Heading -> Text(
+                            row.text,
+                            style = styles.heading,
+                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+                        )
+                        is ReaderRow.Paragraph -> ParagraphText(
+                            row = row,
+                            active = activeSegment?.takeIf { it in row.segments },
+                            found = matchesByParagraph[row.chapter to row.paragraph].orEmpty(),
+                            currentFound = matches.getOrNull(findIndex),
+                            style = styles.body,
+                            // Tapping a sentence listens from there, but never takes over another item that's playing.
+                            onTapSegment = if (inPlayer == null) null else { seg ->
+                                reader.seekTo(seg.index)
+                                if (!state.playWhenReady) reader.play()
+                            },
+                        )
+                    }
                 }
             }
-        }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            itemsIndexed(rows) { _, row ->
-                when (row) {
-                    is ReaderRow.Header -> ArticleHeader(row.document, current?.let { c.library.meta(it.docId) }, state.speed)
-                    is ReaderRow.Heading -> Text(
-                        row.text,
-                        style = styles.heading,
-                        modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
-                    )
-                    is ReaderRow.Paragraph -> ParagraphText(
-                        row = row,
-                        active = activeSegment?.takeIf { it in row.segments },
-                        found = matchesByParagraph[row.chapter to row.paragraph].orEmpty(),
-                        currentFound = matches.getOrNull(findIndex),
-                        style = styles.body,
-                        // Tapping a sentence listens from there, but never takes over another item that's playing.
-                        onTapSegment = if (inPlayer == null) null else { seg ->
-                            reader.seekTo(seg.index)
-                            if (!state.playWhenReady) reader.play()
-                        },
-                    )
+            Column(Modifier.fillMaxWidth().onSizeChanged { topHeight = maxOf(topHeight, it.height) }) {
+                TopChrome {
+                        val query = findQuery
+                        if (query != null) {
+                            SearchTopBar(
+                                query = query,
+                                placeholder = "Find in article",
+                                onQueryChange = { findQuery = it },
+                                onClose = { findQuery = null },
+                                onSearch = { stepMatch(1) },
+                                actions = {
+                                    if (query.isNotBlank()) {
+                                        Text(
+                                            if (matches.isEmpty()) "0/0" else "${findIndex + 1}/${matches.size}${if (matches.size >= MAX_FIND_MATCHES) "+" else ""}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    IconButton(onClick = { stepMatch(-1) }, enabled = matches.isNotEmpty()) {
+                                        Icon(Icons.Default.KeyboardArrowUp, "Previous match")
+                                    }
+                                    IconButton(onClick = { stepMatch(1) }, enabled = matches.isNotEmpty()) {
+                                        Icon(Icons.Default.KeyboardArrowDown, "Next match")
+                                    }
+                                },
+                            )
+                            return@TopChrome
+                        }
+                        TopAppBar(
+                            title = {
+                                AnimatedVisibility(visible = headerHidden, enter = fadeIn(), exit = fadeOut()) {
+                                    Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            },
+                            navigationIcon = { BackIcon(onBack) },
+                            actions = {
+                                val doc = current?.document
+                                if (doc != null) {
+                                    IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
+                                    IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
+                                }
+                                if (doc != null && doc.chapters.size >= 2) {
+                                    IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
+                                }
+                                val meta = current?.let { c.library.meta(it.docId) }
+                                if (meta?.source?.startsWith("http") == true) {
+                                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
+                                }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    if (meta != null && meta.source.startsWith("http")) {
+                                        DropdownMenuItem(text = { Text("Open original") }, onClick = {
+                                            menuOpen = false
+                                            openInBrowser(context, meta.source)
+                                        })
+                                        if (meta.isWeb) {
+                                            DropdownMenuItem(text = { Text("Reload") }, onClick = {
+                                                menuOpen = false
+                                                reloading = true
+                                                scope.launch {
+                                                    try {
+                                                        val (outcome, index) = c.imports.reload(meta.id)
+                                                        reader.replaceDocument(meta.id, outcome.document, index)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, e.message ?: "Couldn't reload the article", Toast.LENGTH_LONG).show()
+                                                    } finally {
+                                                        reloading = false
+                                                    }
+                                                }
+                                            })
+                                        }
+                                        DropdownMenuItem(text = { Text("Sign in to site") }, onClick = {
+                                            menuOpen = false
+                                            context.startActivity(SiteSignInActivity.intent(context, meta.source, meta.id))
+                                        })
+                                    }
+                                }
+                            },
+                        )
+                }
+                if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.notice?.let { notice ->
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(notice, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = onVoices) { Text("Voices") }
+                        }
+                    }
                 }
             }
         }
+
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().onSizeChanged { bottomHeight = it.height },
+                horizontalAlignment = Alignment.End,
+            ) {
+                // Another item is playing: Play switches the player to this one, from where the reader is.
+                if (inPlayer == null && current != null) {
+                    ExtendedFloatingActionButton(
+                        onClick = { listenFromHere() },
+                        expanded = !listState.lastScrolledForward,
+                        icon = { Icon(Icons.Default.PlayArrow, null) },
+                        text = { Text("Play") },
+                        modifier = Modifier.navigationBarsPadding().padding(16.dp),
+                    )
+                }
+                // Hidden while reading an article that isn't the one in the player, so the screen is
+                // only about this article. What's playing carries on, with its notification controls.
+                if (state.docId != null && (docId == null || inPlayer != null)) {
+                    val playing = c.library.meta(state.docId!!)
+                    NowPlayingBar(
+                        state = state,
+                        content = content,
+                        reader = reader,
+                        rewindSeconds = rewindSeconds,
+                        expanded = playerExpanded,
+                        onExpandedChange = { playerExpanded = it },
+                        onVoices = onVoices,
+                        source = playing?.source,
+                        kind = playing?.kind,
+                    )
+                }
+            }
         }
     }
 
@@ -647,6 +719,13 @@ private fun ParagraphText(
             },
     )
 }
+
+/** The top bar's contents; a label to return from early. */
+@Composable
+private fun TopChrome(content: @Composable () -> Unit) = content()
+
+/** How far a drag must move, in pixels per frame, to show or hide the bars. */
+private const val SCROLL_SLOP = 6f
 
 /** Find in article stops counting here; very common words in long books would otherwise slow it down. */
 private const val MAX_FIND_MATCHES = 1000
