@@ -76,84 +76,92 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
 
     Scaffold(topBar = { TopAppBar(title = { Text("Notification reading") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Text(
-                "Murmur adds a notification with a Play button when an app you choose sends a notification. " +
+            SettingsGroup(
+                note = "Murmur adds a notification with a Play button when an app you choose sends a notification. " +
                     "Notification text stays on this phone and isn't saved.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SwitchRow(
-                title = "Read notifications",
-                description = "Requires notification access, which lets Murmur see all notifications. Only the apps you choose are read.",
-                checked = enabled,
-                onChange = { on ->
-                    s.setNotificationReading(on)
-                    NotificationReaderService.applySetting(context, on)
-                    if (on && !hasAccess) openAccessSettings(context)
-                },
-            )
+            ) {
+                SwitchRow(
+                    title = "Read notifications",
+                    description = "Requires notification access, which lets Murmur see all notifications. Only the apps you choose are read.",
+                    checked = enabled,
+                    onChange = { on ->
+                        s.setNotificationReading(on)
+                        NotificationReaderService.applySetting(context, on)
+                        if (on && !hasAccess) openAccessSettings(context)
+                    },
+                )
+            }
 
             if (enabled && !hasAccess) {
-                Text("Murmur doesn't have notification access.", style = MaterialTheme.typography.bodyLarge)
-                Button(onClick = { openAccessSettings(context) }) { Text("Allow notification access") }
-                if (Build.VERSION.SDK_INT >= 33) {
+                SettingsCard(color = MaterialTheme.colorScheme.errorContainer) {
                     Text(
-                        "If the setting can't be turned on, open App info for Murmur, tap ⋮, then tap Allow restricted settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        "Murmur doesn't have notification access.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
-                    OutlinedButton(onClick = { openAppInfo(context) }) { Text("App info") }
+                    Button(
+                        onClick = { openAccessSettings(context) },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    ) { Text("Allow notification access") }
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        Text(
+                            "If the setting can't be turned on, open App info for Murmur, tap ⋮, then tap Allow restricted settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        OutlinedButton(
+                            onClick = { openAppInfo(context) },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                        ) { Text("App info") }
+                    }
                 }
             }
 
             if (enabled) {
-                HorizontalDivider()
-                Section("Apps")
-                if (apps.isEmpty()) {
-                    Text(
-                        "Apps appear here after they send a notification.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (apps.isNotEmpty()) {
-                    Text(
-                        "Turn on Auto-play for an app to read its notifications as soon as they arrive, without pressing Play.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                apps.forEach { app ->
-                    val checked = app.pkg in readApps
-                    val autoPlay = checked && app.pkg in autoPlayApps
-                    AppRow(
-                        app = app,
-                        checked = checked,
-                        onCheckedChange = { on ->
-                            s.setReadApp(app.pkg, on)
-                            if (!on) s.setAutoPlayApp(app.pkg, false)
-                        },
-                        autoPlay = if (checked) autoPlay else null,
-                        onAutoPlayChange = { on -> s.setAutoPlayApp(app.pkg, on) },
-                    )
-                    if (autoPlay) {
-                        val rule = autoPlayRules[app.pkg] ?: AutoPlayRule()
-                        AutoPlayOptions(rule) { s.setAutoPlayRule(app.pkg, it) }
+                SettingsGroup(
+                    "Apps",
+                    note = if (apps.isEmpty()) {
+                        "Apps appear here after they send a notification."
+                    } else {
+                        "Turn on Auto-play for an app to read its notifications as soon as they arrive, without pressing Play."
+                    },
+                ) {
+                    if (apps.isEmpty()) return@SettingsGroup
+                    apps.forEachIndexed { i, app ->
+                        if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        val checked = app.pkg in readApps
+                        val autoPlay = checked && app.pkg in autoPlayApps
+                        AppRow(
+                            app = app,
+                            checked = checked,
+                            onCheckedChange = { on ->
+                                s.setReadApp(app.pkg, on)
+                                if (!on) s.setAutoPlayApp(app.pkg, false)
+                            },
+                            autoPlay = if (checked) autoPlay else null,
+                            onAutoPlayChange = { on -> s.setAutoPlayApp(app.pkg, on) },
+                        )
+                        if (autoPlay) {
+                            val rule = autoPlayRules[app.pkg] ?: AutoPlayRule()
+                            AutoPlayOptions(rule) { s.setAutoPlayRule(app.pkg, it) }
+                        }
                     }
                 }
             }
 
             if (hasAccess) {
-                HorizontalDivider()
-                Text(
-                    "To remove notification access, turn it off in notification access settings.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(onClick = { openAccessSettings(context) }) { Text("Notification access settings") }
+                SettingsGroup(note = "To remove notification access, turn it off in notification access settings.") {
+                    NavigationRow("Notification access settings", description = null) { openAccessSettings(context) }
+                }
             }
         }
     }
@@ -168,35 +176,39 @@ private fun AppRow(
     autoPlay: Boolean?,
     onAutoPlayChange: (Boolean) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(12.dp))
+            Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp))
             if (app.icon != null) {
-                Image(app.icon, null, Modifier.size(32.dp))
+                Image(app.icon, null, Modifier.size(36.dp))
             } else {
-                Spacer(Modifier.size(32.dp))
+                Spacer(Modifier.size(36.dp))
             }
-            Text(app.label, Modifier.padding(start = 12.dp, end = 8.dp))
+            Text(app.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp, end = 8.dp))
         }
         if (autoPlay != null) {
             Row(
                 Modifier.toggleable(value = autoPlay, role = Role.Switch, onValueChange = onAutoPlayChange),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Auto-play", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
+                Text("Auto-play", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
                 Switch(checked = autoPlay, onCheckedChange = null)
             }
         }
     }
 }
 
-/** One app's auto-play conditions, indented under its row. */
+/** One app's auto-play conditions, in an inset panel under its row. */
 @Composable
 private fun AutoPlayOptions(rule: AutoPlayRule, onChange: (AutoPlayRule) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(start = 56.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    SettingsCard(
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
         SwitchRow(
             title = "Only with headphones or Bluetooth",
             description = "Auto-play only when audio goes to headphones, a Bluetooth device or a car.",
@@ -209,7 +221,7 @@ private fun AutoPlayOptions(rule: AutoPlayRule, onChange: (AutoPlayRule) -> Unit
             checked = rule.respectDnd,
             onChange = { onChange(rule.copy(respectDnd = it)) },
         )
-        Text("Screen", style = MaterialTheme.typography.titleSmall)
+        SettingsSubheading("Screen")
         RadioRow("Only when the screen is on", rule.screen == AutoPlayScreen.SCREEN_ON) { onChange(rule.copy(screen = AutoPlayScreen.SCREEN_ON)) }
         RadioRow("Only when the screen is off", rule.screen == AutoPlayScreen.SCREEN_OFF) { onChange(rule.copy(screen = AutoPlayScreen.SCREEN_OFF)) }
         RadioRow("Any time", rule.screen == AutoPlayScreen.ANY) { onChange(rule.copy(screen = AutoPlayScreen.ANY)) }

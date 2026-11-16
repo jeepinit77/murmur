@@ -36,7 +36,7 @@ import app.murmur.ui.theme.ThemeMode
 import app.murmur.ui.theme.isDark
 import app.murmur.ui.theme.wallpaperColorsAvailable
 
-/** Theme, Color and Black background settings. */
+/** Theme, Black background and Color settings. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AppearanceSettings() {
@@ -46,31 +46,36 @@ internal fun AppearanceSettings() {
     val black by settings.blackBackground.collectAsStateWithLifecycle()
     val dark = mode.isDark()
 
-    Section("Theme")
-    ThemeMode.entries.forEach { m ->
-        RadioRow(m.label, mode == m) { settings.setThemeMode(m) }
+    SettingsGroup("Theme") {
+        ThemeMode.entries.forEach { m ->
+            RadioRow(m.label, mode == m) { settings.setThemeMode(m) }
+        }
+        SwitchRow(
+            "Black background",
+            "Use black instead of dark gray in the dark theme",
+            black,
+            settings::setBlackBackground,
+        )
     }
 
-    Section("Color")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Palette.entries
-            .filter { it != Palette.WALLPAPER || wallpaperColorsAvailable }
-            .forEach { p ->
-                Swatch(
-                    palette = p,
-                    color = if (p == Palette.WALLPAPER) MaterialTheme.colorScheme.surfaceContainerHighest else p.swatch(dark),
-                    selected = palette == p,
-                    onClick = { settings.setPalette(p) },
-                )
-            }
+    SettingsGroup("Color") {
+        FlowRow(
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Palette.entries
+                .filter { it != Palette.WALLPAPER || wallpaperColorsAvailable }
+                .forEach { p ->
+                    Swatch(
+                        palette = p,
+                        color = if (p == Palette.WALLPAPER) MaterialTheme.colorScheme.surfaceContainerHighest else p.swatch(dark),
+                        selected = palette == p,
+                        onClick = { settings.setPalette(p) },
+                    )
+                }
+        }
     }
-
-    SwitchRow(
-        "Black background",
-        "Use black instead of dark gray in the dark theme",
-        black,
-        settings::setBlackBackground,
-    )
 }
 
 @Composable
@@ -78,7 +83,7 @@ private fun Swatch(palette: Palette, color: Color, selected: Boolean, onClick: (
     val onColor = if (color.luminance() > 0.4f) Color.Black else Color.White
     Column(
         Modifier
-            .width(64.dp)
+            .width(76.dp)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -103,6 +108,8 @@ private fun Swatch(palette: Palette, color: Color, selected: Boolean, onClick: (
             palette.label,
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(top = 4.dp),
         )
     }

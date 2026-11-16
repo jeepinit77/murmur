@@ -1,0 +1,251 @@
+package app.murmur.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+
+/*
+ * Building blocks for settings screens: settings sit in rounded cards, grouped under a title, as in
+ * the phone's own Settings app. Rows have the same padding everywhere so the cards line up.
+ */
+
+/** Horizontal padding of every row inside a card. */
+private val ROW_PADDING = 16.dp
+
+/** A titled group of settings in one card. [note] explains the whole group, under its title. */
+@Composable
+internal fun SettingsGroup(
+    title: String? = null,
+    note: String? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier.fillMaxWidth()) {
+        if (title != null) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, bottom = 8.dp),
+            )
+        }
+        if (note != null) {
+            Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, bottom = 8.dp),
+            )
+        }
+        SettingsCard(content = content)
+    }
+}
+
+/** The rounded card behind a group of rows. */
+@Composable
+internal fun SettingsCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = MaterialTheme.shapes.large,
+    color: Color = MaterialTheme.colorScheme.surfaceContainer,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier.fillMaxWidth(), shape = shape, color = color) {
+        Column(Modifier.padding(vertical = 6.dp), content = content)
+    }
+}
+
+/**
+ * The shape of item [index] of [count] in a list of separate cards: the first and last are rounded
+ * on the outside, the rest only slightly, so the list reads as one group.
+ */
+internal fun segmentShape(index: Int, count: Int): Shape {
+    val outer = 24.dp
+    val inner = 6.dp
+    return RoundedCornerShape(
+        topStart = if (index == 0) outer else inner,
+        topEnd = if (index == 0) outer else inner,
+        bottomStart = if (index == count - 1) outer else inner,
+        bottomEnd = if (index == count - 1) outer else inner,
+    )
+}
+
+/** A heading for a few rows within a card, such as "Code blocks". */
+@Composable
+internal fun SettingsSubheading(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, top = 12.dp, bottom = 2.dp),
+    )
+}
+
+/** Explanatory text inside a card. */
+@Composable
+internal fun SettingsNote(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = ROW_PADDING, vertical = 8.dp),
+    )
+}
+
+@Composable
+internal fun SwitchRow(title: String, description: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = ROW_PADDING, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RowText(title, description, Modifier.weight(1f).padding(end = 16.dp))
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+internal fun RadioRow(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    description: String? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(start = 4.dp, end = ROW_PADDING, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled, modifier = Modifier.padding(12.dp))
+        RowText(label, description, Modifier.weight(1f).padding(vertical = 8.dp), enabled = enabled)
+    }
+}
+
+/** A setting with a slider, its current value shown at the end of the title line. */
+@Composable
+internal fun SliderRow(
+    title: String,
+    value: String,
+    position: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = ROW_PADDING, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(value, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        SlimSlider(position, onChange, range)
+    }
+}
+
+/** A row that opens another screen, with its current state ("On") before the arrow. */
+@Composable
+internal fun NavigationRow(title: String, description: String?, value: String? = null, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = ROW_PADDING, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RowText(title, description, Modifier.weight(1f).padding(end = 8.dp))
+        if (value != null) {
+            Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
+}
+
+/** A row that does something right away, such as opening system settings or clearing data. */
+@Composable
+internal fun ActionRow(title: String, destructive: Boolean = false, onClick: () -> Unit) {
+    Text(
+        title,
+        style = MaterialTheme.typography.bodyLarge,
+        color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = ROW_PADDING, vertical = 14.dp),
+    )
+}
+
+@Composable
+private fun RowText(title: String, description: String?, modifier: Modifier, enabled: Boolean = true) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val onSurface = MaterialTheme.colorScheme.onSurface
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) onSurface else onSurface.copy(alpha = 0.38f))
+        if (description != null) {
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Murmur's slider: a slim track and a narrow thumb, as in the player. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SlimSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    onValueChangeFinished: (() -> Unit)? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = valueRange,
+        onValueChangeFinished = onValueChangeFinished,
+        interactionSource = interaction,
+        thumb = { SliderDefaults.Thumb(interaction, thumbSize = DpSize(4.dp, 24.dp)) },
+        track = {
+            SliderDefaults.Track(
+                sliderState = it,
+                modifier = Modifier.height(6.dp),
+                drawStopIndicator = null,
+                thumbTrackGapSize = 4.dp,
+                trackInsideCornerSize = 2.dp,
+            )
+        },
+        modifier = modifier,
+    )
+}

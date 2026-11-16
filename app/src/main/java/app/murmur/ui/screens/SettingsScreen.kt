@@ -101,221 +101,170 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             AppearanceSettings()
 
-            HorizontalDivider()
-            Section("Reading speed: ${formatSpeed(speed)}")
-            Slider(
-                value = speed,
-                onValueChange = { c.reader.setSpeed((it * 20).roundToInt() / 20f) },
-                valueRange = Settings.MIN_SPEED..Settings.MAX_SPEED,
-            )
-
-            Section("Pause between paragraphs: $pause ms")
-            Slider(
-                value = pause.toFloat(),
-                onValueChange = { c.settings.setParagraphPauseMs((it / 50).roundToInt() * 50) },
-                valueRange = 0f..1500f,
-            )
-
-            HorizontalDivider()
-            Section("Rewind button")
-            Settings.REWIND_CHOICES.forEach { seconds ->
-                RadioRow("$seconds seconds", rewind == seconds) { c.settings.setRewindSeconds(seconds) }
-            }
-
-            HorizontalDivider()
-            Section("When sharing while something is playing")
-            ShareMode.entries.forEach { mode ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = shareMode == mode, onClick = { c.settings.setShareMode(mode) })
-                    Text(if (mode == ShareMode.REPLACE) "Start reading the new item" else "Add it to the queue")
-                }
-            }
-            if (shareMode == ShareMode.REPLACE) {
+            SettingsGroup("Playback") {
+                SliderRow(
+                    title = "Reading speed",
+                    value = formatSpeed(speed),
+                    position = speed,
+                    range = Settings.MIN_SPEED..Settings.MAX_SPEED,
+                    onChange = { c.reader.setSpeed((it * 20).roundToInt() / 20f) },
+                )
+                SliderRow(
+                    title = "Pause between paragraphs",
+                    value = "$pause ms",
+                    position = pause.toFloat(),
+                    range = 0f..1500f,
+                    onChange = { c.settings.setParagraphPauseMs((it / 50).roundToInt() * 50) },
+                )
                 SwitchRow(
-                    title = "Keep playing while loading",
-                    description = "Keep reading the current item until the shared page is ready, instead of stopping right away.",
-                    checked = keepPlaying,
-                    onChange = c.settings::setKeepPlayingWhileLoading,
+                    title = "Loading and error sounds",
+                    description = "Play a quiet tone while audio is being prepared, and a short sound if reading can't start.",
+                    checked = soundCues,
+                    onChange = c.settings::setSoundCues,
                 )
             }
-            SwitchRow(
-                title = "Loading and error sounds",
-                description = "Play a quiet tone while audio is being prepared, and a short sound if reading can't start.",
-                checked = soundCues,
-                onChange = c.settings::setSoundCues,
-            )
 
-            HorizontalDivider()
-            Section("When sharing a saved page")
-            SavedPageMode.entries.forEach { mode ->
-                val label = when (mode) {
-                    SavedPageMode.ASK -> "Ask"
-                    SavedPageMode.RESUME -> "Resume"
-                    SavedPageMode.IMPORT_AGAIN -> "Import again"
+            SettingsGroup("Rewind button") {
+                Settings.REWIND_CHOICES.forEach { seconds ->
+                    RadioRow("$seconds seconds", rewind == seconds) { c.settings.setRewindSeconds(seconds) }
                 }
-                RadioRow(label, savedPageMode == mode) { c.settings.setSavedPageMode(mode) }
             }
 
-            HorizontalDivider()
-            Section("Web articles")
-            Text(
-                "These settings apply to pages you add from now on. To update a saved article, choose Reload from its menu.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SwitchRow(
-                title = "Headings as chapters",
-                description = "Split articles at their section headings so you can skip between sections.",
-                checked = headings,
-                onChange = c.settings::setHeadingsAsChapters,
-            )
-            SwitchRow(
-                title = "Read title and author first",
-                description = "After the title, read the subtitle, author, site name and publish date.",
-                checked = intro,
-                onChange = c.settings::setSpokenIntro,
-            )
-            SwitchRow(
-                title = "Read image captions",
-                description = "Read figure captions and image descriptions.",
-                checked = captions,
-                onChange = c.settings::setReadCaptions,
-            )
-            Text("Code blocks", style = MaterialTheme.typography.titleSmall)
-            RadioRow("Skip", code == CodeMode.SKIP) { c.settings.setCodeMode(CodeMode.SKIP) }
-            RadioRow("Say “${ExtractOptions.CODE_NOTICE}”", code == CodeMode.NOTICE) { c.settings.setCodeMode(CodeMode.NOTICE) }
-            RadioRow("Read line by line", code == CodeMode.READ) { c.settings.setCodeMode(CodeMode.READ) }
+            SettingsGroup("When sharing while something is playing") {
+                ShareMode.entries.forEach { mode ->
+                    RadioRow(
+                        if (mode == ShareMode.REPLACE) "Start reading the new item" else "Add it to the queue",
+                        shareMode == mode,
+                    ) { c.settings.setShareMode(mode) }
+                }
+                if (shareMode == ShareMode.REPLACE) {
+                    SwitchRow(
+                        title = "Keep playing while loading",
+                        description = "Keep reading the current item until the shared page is ready, instead of stopping right away.",
+                        checked = keepPlaying,
+                        onChange = c.settings::setKeepPlayingWhileLoading,
+                    )
+                }
+            }
+
+            SettingsGroup("When sharing a saved page") {
+                SavedPageMode.entries.forEach { mode ->
+                    val label = when (mode) {
+                        SavedPageMode.ASK -> "Ask"
+                        SavedPageMode.RESUME -> "Resume"
+                        SavedPageMode.IMPORT_AGAIN -> "Import again"
+                    }
+                    RadioRow(label, savedPageMode == mode) { c.settings.setSavedPageMode(mode) }
+                }
+            }
+
+            SettingsGroup(
+                "Web articles",
+                note = "These settings apply to pages you add from now on. To update a saved article, choose Reload from its menu.",
+            ) {
+                SwitchRow(
+                    title = "Headings as chapters",
+                    description = "Split articles at their section headings so you can skip between sections.",
+                    checked = headings,
+                    onChange = c.settings::setHeadingsAsChapters,
+                )
+                SwitchRow(
+                    title = "Read title and author first",
+                    description = "After the title, read the subtitle, author, site name and publish date.",
+                    checked = intro,
+                    onChange = c.settings::setSpokenIntro,
+                )
+                SwitchRow(
+                    title = "Read image captions",
+                    description = "Read figure captions and image descriptions.",
+                    checked = captions,
+                    onChange = c.settings::setReadCaptions,
+                )
+                SettingsSubheading("Code blocks")
+                RadioRow("Skip", code == CodeMode.SKIP) { c.settings.setCodeMode(CodeMode.SKIP) }
+                RadioRow("Say “${ExtractOptions.CODE_NOTICE}”", code == CodeMode.NOTICE) { c.settings.setCodeMode(CodeMode.NOTICE) }
+                RadioRow("Read line by line", code == CodeMode.READ) { c.settings.setCodeMode(CodeMode.READ) }
+            }
 
             // Applies to every source that keeps tables: web pages, pasted text, HTML and text files, EPUBs.
-            HorizontalDivider()
-            Section("Tables")
-            RadioRow("Skip", tables == TableMode.SKIP) { c.settings.setTableMode(TableMode.SKIP) }
-            // Without a model, a saved "Summarize" choice reads row by row.
-            val readSelected = tables == TableMode.READ || (tables == TableMode.SUMMARIZE && !canSummarize)
-            RadioRow("Read row by row", readSelected) { c.settings.setTableMode(TableMode.READ) }
-            if (tableAi != null) {
-                RadioRow(
-                    label = "Summarize with AI",
-                    selected = tables == TableMode.SUMMARIZE && canSummarize,
-                    enabled = canSummarize,
-                    description = when (aiStatus) {
-                        TableAiStatus.READY -> "Uses Gemini Nano on this phone. Tables with fewer than 4 rows are read row by row."
-                        TableAiStatus.NEEDS_DOWNLOAD -> "Uses Gemini Nano, which will download to this phone. Tables are read row by row until it's ready."
-                        TableAiStatus.DOWNLOADING -> "Gemini Nano is downloading. Tables are read row by row until it's ready."
-                        TableAiStatus.UNSUPPORTED, TableAiStatus.ERROR -> "Not available on this phone. Requires Gemini Nano."
-                        null -> null
-                    },
-                ) {
-                    c.settings.setTableMode(TableMode.SUMMARIZE)
-                    tableAi.prepare()
-                }
-                if (tables == TableMode.SUMMARIZE && canSummarize) {
-                    SwitchRow(
-                        title = "Label summaries as AI",
-                        description = "Read “Table summary by AI” before each summary.",
-                        checked = labelAi,
-                        onChange = c.settings::setLabelAiSummaries,
-                    )
-                }
-            }
-
-            HorizontalDivider()
-            Section("Notifications")
-            Row(
-                Modifier.fillMaxWidth().clickable(onClick = onNotificationReading),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Notification reading", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Read notifications from apps you choose.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(if (notificationReading) "On" else "Off", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            HorizontalDivider()
-            Section("Website sign-ins")
-            Text(
-                "Sites you sign in to from an article's menu stay signed in, so articles from your subscriptions import in full.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(onClick = { confirmClear = true }) { Text("Clear website sign-ins") }
-
-            if (c.voices.hasOptInSources) {
-                HorizontalDivider()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Google voices", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Text(
-                            "Add voices from Google's Speech Recognition & Synthesis app to the Voice screen. " +
-                                "On some phones, every Google voice sounds the same.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SettingsGroup("Tables") {
+                RadioRow("Skip", tables == TableMode.SKIP) { c.settings.setTableMode(TableMode.SKIP) }
+                // Without a model, a saved "Summarize" choice reads row by row.
+                val readSelected = tables == TableMode.READ || (tables == TableMode.SUMMARIZE && !canSummarize)
+                RadioRow("Read row by row", readSelected) { c.settings.setTableMode(TableMode.READ) }
+                if (tableAi != null) {
+                    RadioRow(
+                        label = "Summarize with AI",
+                        selected = tables == TableMode.SUMMARIZE && canSummarize,
+                        enabled = canSummarize,
+                        description = when (aiStatus) {
+                            TableAiStatus.READY -> "Uses Gemini Nano on this phone. Tables with fewer than 4 rows are read row by row."
+                            TableAiStatus.NEEDS_DOWNLOAD -> "Uses Gemini Nano, which will download to this phone. Tables are read row by row until it's ready."
+                            TableAiStatus.DOWNLOADING -> "Gemini Nano is downloading. Tables are read row by row until it's ready."
+                            TableAiStatus.UNSUPPORTED, TableAiStatus.ERROR -> "Not available on this phone. Requires Gemini Nano."
+                            null -> null
+                        },
+                    ) {
+                        c.settings.setTableMode(TableMode.SUMMARIZE)
+                        tableAi.prepare()
+                    }
+                    if (tables == TableMode.SUMMARIZE && canSummarize) {
+                        SwitchRow(
+                            title = "Label summaries as AI",
+                            description = "Read “Table summary by AI” before each summary.",
+                            checked = labelAi,
+                            onChange = c.settings::setLabelAiSummaries,
                         )
                     }
-                    Switch(checked = googleVoices, onCheckedChange = { c.settings.setGoogleVoices(it) })
                 }
             }
 
-            HorizontalDivider()
-            Section("About")
-            Text(
-                "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
-                    "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
-                    "respective authors, under their own licenses.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
+            SettingsGroup("Notifications") {
+                NavigationRow(
+                    title = "Notification reading",
+                    description = "Read notifications from apps you choose.",
+                    value = if (notificationReading) "On" else "Off",
+                    onClick = onNotificationReading,
+                )
+            }
 
-@Composable
-internal fun Section(title: String) {
-    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-}
+            SettingsGroup(
+                "Website sign-ins",
+                note = "Sites you sign in to from an article's menu stay signed in, so articles from your subscriptions import in full.",
+            ) {
+                ActionRow("Clear website sign-ins", destructive = true) { confirmClear = true }
+            }
 
-@Composable
-internal fun SwitchRow(title: String, description: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = checked, onCheckedChange = null)
-    }
-}
+            if (c.voices.hasOptInSources) {
+                SettingsGroup {
+                    SwitchRow(
+                        title = "Google voices",
+                        description = "Add voices from Google's Speech Recognition & Synthesis app to the Voice screen. " +
+                            "On some phones, every Google voice sounds the same.",
+                        checked = googleVoices,
+                        onChange = { c.settings.setGoogleVoices(it) },
+                    )
+                }
+            }
 
-@Composable
-internal fun RadioRow(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean = true,
-    description: String? = null,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled, modifier = Modifier.padding(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-            Text(label, color = color)
-            if (description != null) {
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SettingsGroup("About") {
+                Text(
+                    "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
+                        "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
+                        "respective authors, under their own licenses.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
         }
     }
