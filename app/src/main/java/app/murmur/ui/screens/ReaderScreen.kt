@@ -80,6 +80,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.core.view.ViewCompat
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -179,7 +184,7 @@ fun ReaderScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ReaderScreenBody(
     docId: String?,
@@ -247,6 +252,11 @@ private fun ReaderScreenBody(
         return starts.getOrElse(row) { starts.lastOrNull() ?: 0 }
     }
 
+    // Reading and listening don't overlap: opening reader mode pauses this article.
+    LaunchedEffect(Unit) {
+        if (readerMode && docId != null && reader.state.value.docId == docId && reader.isBusy()) reader.pause()
+    }
+
     // Start at the saved place: where listening stopped or reading left off.
     // Placed again on coming back from reader mode, where the place may have moved.
     var placed by remember(docId) { mutableStateOf(false) }
@@ -254,7 +264,8 @@ private fun ReaderScreenBody(
         val l = layout ?: return@LaunchedEffect
         if (placed) return@LaunchedEffect
         placed = true
-        if (initialFind != null || listening) return@LaunchedEffect
+        // Reader mode paused the article just now, so it starts where the voice was.
+        if (initialFind != null || (listening && !readerMode)) return@LaunchedEffect
         val index = if (inPlayer != null) state.currentIndex else c.library.progressOf(current!!.docId)
         val row = l.second.getOrNull(index) ?: 0
         if (row > 0) listState.scrollToItem(row)
@@ -306,14 +317,16 @@ private fun ReaderScreenBody(
         }
     }
 
-    fun listenFromHere() {
-        val cur = current ?: return
+    /** Reads aloud from the sentence at the top of the screen; false when there's no voice yet. */
+    fun listenFromHere(): Boolean {
+        val cur = current ?: return false
         if (!c.voices.hasAnyInstalled()) {
             onVoices()
-            return
+            return false
         }
         val index = readingIndex()
         scope.launch { reader.open(cur.docId, cur.document, startIndex = index, autoplay = true) }
+        return true
     }
     val headerHidden by remember(layout) { derivedStateOf { layout == null || listState.firstVisibleItemIndex > 0 } }
     var userScrolled by remember { mutableStateOf(false) }
@@ -392,7 +405,11 @@ private fun ReaderScreenBody(
             controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             if (showChrome) controller?.show(WindowInsetsCompat.Type.systemBars())
             else controller?.hide(WindowInsetsCompat.Type.systemBars())
-            onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+            onDispose {
+                controller?.show(WindowInsetsCompat.Type.systemBars())
+                // Leaving reader mode: have the screen underneath measure the bars again.
+                view.post { ViewCompat.requestApplyInsets(view) }
+            }
         }
     }
     val density = LocalDensity.current
@@ -474,7 +491,15 @@ private fun ReaderScreenBody(
             exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            Column(Modifier.fillMaxWidth().onSizeChanged { topHeight = maxOf(topHeight, it.height) }) {
+            // Reader mode hides the status bar while reading, and the inset can still read as zero
+            // when the bars come back; keeping its space always puts the top bar below it.
+            val statusBarSpace = if (readerMode) {
+                Modifier
+                    .background(MaterialTheme.colorScheme.surface)
+                    .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                    .consumeWindowInsets(WindowInsets.statusBarsIgnoringVisibility)
+            } else Modifier
+            Column(Modifier.fillMaxWidth().onSizeChanged { topHeight = maxOf(topHeight, it.height) }.then(statusBarSpace)) {
                 TopChrome {
                         val query = findQuery
                         if (query != null) {
@@ -535,10 +560,17 @@ private fun ReaderScreenBody(
                                     IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
                                 }
                                 val meta = current?.let { c.library.meta(it.docId) }
-                                if (meta?.source?.startsWith("http") == true) {
+                                if (readerMode || meta?.source?.startsWith("http") == true) {
                                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
                                 }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    if (readerMode && doc != null) {
+                                        // Back to the article, reading aloud from the sentence at the top of the screen.
+                                        DropdownMenuItem(text = { Text("Listen from here") }, onClick = {
+                                            menuOpen = false
+                                            if (listenFromHere()) onBack()
+                                        })
+                                    }
                                     if (meta != null && meta.source.startsWith("http")) {
                                         DropdownMenuItem(text = { Text("Open original") }, onClick = {
                                             menuOpen = false
@@ -600,8 +632,9 @@ private fun ReaderScreenBody(
             )
         }
 
+        // Reader mode is for reading: no player. Listen from here in the menu goes back to listening.
         AnimatedVisibility(
-            visible = showChrome,
+            visible = showChrome && !readerMode,
             enter = slideInVertically { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
