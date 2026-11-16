@@ -4,7 +4,19 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.widget.Toast
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -119,9 +131,11 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (mine.isEmpty()) {
                 item(key = "empty") {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("You haven't downloaded any voices yet.", style = MaterialTheme.typography.bodyLarge)
-                        DownloadVoicesButton(onDownloads)
+                    SettingsCard(Modifier.padding(16.dp)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text("You haven't downloaded any voices yet.", style = MaterialTheme.typography.bodyLarge)
+                            DownloadVoicesButton(onDownloads)
+                        }
                     }
                 }
                 return@LazyColumn
@@ -140,34 +154,23 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                 }
             }
             item(key = "h-mine") { SectionHeader("Your voices") }
-            items(shown, key = { it.id }) { voice ->
-                val isSelected = voice.id == selected
-                ListItem(
-                    modifier = Modifier.clickable {
+            itemsIndexed(shown, key = { _, v -> v.id }) { i, voice ->
+                VoiceRow(
+                    voice = voice,
+                    details = listOfNotNull(
+                        voice.gender?.label,
+                        localeName(voice.language),
+                        voice.pkg.name.takeIf { voice.name in duplicateNames },
+                    ).joinToString(" · "),
+                    selected = voice.id == selected,
+                    previewing = previewing == voice.id,
+                    canPreview = previewing == null,
+                    shape = segmentShape(i, shown.size),
+                    onSelect = {
                         c.settings.setVoice(voice.id)
                         c.reader.restartIfPlaying()
                     },
-                    leadingContent = {
-                        Box(Modifier.size(24.dp)) {
-                            if (isSelected) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    headlineContent = { Text(voice.name) },
-                    supportingContent = {
-                        Text(
-                            listOfNotNull(
-                                voice.gender?.label,
-                                localeName(voice.language),
-                                voice.pkg.name.takeIf { voice.name in duplicateNames },
-                            ).joinToString(" · "),
-                        )
-                    },
-                    trailingContent = {
-                        IconButton(onClick = { preview(voice) }, enabled = previewing == null) {
-                            if (previewing == voice.id) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else Icon(Icons.Filled.PlayArrow, contentDescription = "Preview ${voice.name}")
-                        }
-                    },
+                    onPreview = { preview(voice) },
                 )
             }
             item(key = "downloads") {
@@ -179,10 +182,81 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
 
 @Composable
 private fun DownloadVoicesButton(onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick) {
+    FilledTonalButton(onClick = onClick) {
         Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(8.dp))
         Text("Download voices")
+    }
+}
+
+/**
+ * One voice in a segmented list. The selected voice is highlighted and its badge shows a check;
+ * the others show the voice's initial.
+ */
+@Composable
+private fun VoiceRow(
+    voice: Voice,
+    details: String,
+    selected: Boolean,
+    previewing: Boolean,
+    canPreview: Boolean,
+    shape: Shape,
+    onSelect: () -> Unit,
+    onPreview: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onSelect,
+        shape = shape,
+        color = if (selected) colors.secondaryContainer else colors.surfaceContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 1.dp)
+            .semantics { this.selected = selected },
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) colors.primary else colors.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(22.dp))
+                } else {
+                    Text(
+                        voice.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                Text(
+                    voice.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (selected) colors.onSecondaryContainer else colors.onSurface,
+                )
+                Text(
+                    details,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onPreview,
+                enabled = canPreview,
+                colors = if (selected) {
+                    IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.surface, contentColor = colors.onSurface)
+                } else {
+                    IconButtonDefaults.filledTonalIconButtonColors()
+                },
+            ) {
+                if (previewing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Filled.PlayArrow, contentDescription = "Preview ${voice.name}")
+            }
+        }
     }
 }
 
@@ -229,14 +303,14 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
             }
             if (done.isNotEmpty()) {
                 item(key = "h-done") { SectionHeader("Downloaded") }
-                items(done, key = { it.pkg.id }) { d ->
-                    DownloadRow(c, d, isInstalled = true, onDelete = { confirmDelete = d })
+                itemsIndexed(done, key = { _, d -> d.pkg.id }) { i, d ->
+                    DownloadRow(c, d, isInstalled = true, shape = segmentShape(i, done.size), onDelete = { confirmDelete = d })
                 }
             }
             if (available.isNotEmpty()) {
                 item(key = "h-available") { SectionHeader("Available") }
-                items(available, key = { it.pkg.id }) { d ->
-                    DownloadRow(c, d, isInstalled = false, onDelete = {})
+                itemsIndexed(available, key = { _, d -> d.pkg.id }) { i, d ->
+                    DownloadRow(c, d, isInstalled = false, shape = segmentShape(i, available.size), onDelete = {})
                 }
             }
         }
@@ -264,14 +338,18 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, onDelete: () -> Unit) {
+private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shape: Shape, onDelete: () -> Unit) {
     val source = remember(d.pkg.id) { sourceFor(c, d.voices.first()) }
     val state by remember(d.pkg.id) { source.downloadState(d.pkg) }.collectAsState(initial = DownloadState.Idle)
     val pkg = d.pkg
-    ListItem(
-        headlineContent = { Text(pkg.name) },
-        supportingContent = {
-            Column {
+    Surface(
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 1.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(pkg.name, style = MaterialTheme.typography.titleMedium)
                 // A download with one locale whose name doesn't say it (Piper voices) shows it here.
                 val locales = d.voices.map { it.language }.distinct()
                 val locale = locales.singleOrNull()?.let(::localeName)
@@ -284,24 +362,45 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, onDe
                         pkg.sizeMb?.let { "$it MB" },
                         if (isInstalled && !pkg.canDelete) "Managed by Google" else pkg.highlight.takeIf { it.isNotBlank() },
                     ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 when (val s = state) {
                     is DownloadState.Running -> {
                         val fraction = s.fraction
-                        Text(s.phase + (fraction?.let { " ${(it * 100).toInt()}%" } ?: "…"))
+                        Text(
+                            s.phase + (fraction?.let { " ${(it * 100).toInt()}%" } ?: "…"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
                         if (fraction != null) {
-                            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(4.dp),
+                                strokeCap = StrokeCap.Round,
+                                gapSize = 0.dp,
+                                drawStopIndicator = {},
+                            )
                         } else {
-                            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+                            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(4.dp), strokeCap = StrokeCap.Round)
                         }
                     }
-                    DownloadState.Queued -> Text("Waiting for network…")
-                    is DownloadState.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
+                    DownloadState.Queued -> Text(
+                        "Waiting for network…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    is DownloadState.Failed -> Text(
+                        s.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                     DownloadState.Idle -> Unit
                 }
             }
-        },
-        trailingContent = {
             val busy = state is DownloadState.Running || state == DownloadState.Queued
             when {
                 busy -> IconButton(onClick = { source.cancelDownload(pkg) }) {
@@ -309,13 +408,13 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, onDe
                 }
                 isInstalled && pkg.canDelete -> TextButton(onClick = onDelete) { Text("Delete") }
                 isInstalled -> Unit
-                else -> OutlinedButton(
+                else -> FilledTonalButton(
                     onClick = { source.download(d.voices.first()) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 ) { Text("Download") }
             }
-        },
-    )
+        }
+    }
 }
 
 // ---- Shared pieces -----------------------------------------------------------------------------
@@ -326,9 +425,9 @@ private fun sourceFor(c: AppContainer, voice: Voice) = c.voices.sourceOf(voice)
 private fun SectionHeader(title: String) {
     Text(
         title,
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+        modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 20.dp, bottom = 8.dp),
     )
 }
 
