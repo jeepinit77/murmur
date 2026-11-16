@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.BuildConfig
 import app.murmur.container
-import app.murmur.share.ShareTargets
 import app.murmur.settings.SavedPageMode
 import app.murmur.settings.Settings
 import app.murmur.settings.ShareMode
@@ -256,35 +255,6 @@ private fun SharingSettings() {
             },
             selected = savedPageMode,
             onSelect = c.settings::setSavedPageMode,
-        )
-    }
-    ShareMenuSettings()
-}
-
-/** Which of Murmur's extra entries appear in other apps' share menus. */
-@Composable
-private fun ShareMenuSettings() {
-    val context = LocalContext.current
-    var queue by remember { mutableStateOf(ShareTargets.isShown(context, ShareTargets.ADD_TO_QUEUE)) }
-    var save by remember { mutableStateOf(ShareTargets.isShown(context, ShareTargets.SAVE_FOR_LATER)) }
-    SettingsGroup("Share menu") {
-        SwitchRow(
-            title = "Add to queue",
-            description = "Read it after what's playing, or now if nothing is",
-            checked = queue,
-            onChange = {
-                ShareTargets.setShown(context, ShareTargets.ADD_TO_QUEUE, it)
-                queue = it
-            },
-        )
-        SwitchRow(
-            title = "Save for later",
-            description = "Add it to your library without reading it aloud",
-            checked = save,
-            onChange = {
-                ShareTargets.setShown(context, ShareTargets.SAVE_FOR_LATER, it)
-                save = it
-            },
         )
     }
 }

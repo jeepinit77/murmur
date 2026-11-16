@@ -93,15 +93,17 @@
             </intent-filter>
         </activity>
 
-        <!-- Extra share menu entries; ShareToSpeakActivity tells them apart by component name. -->
-        <activity-alias
-            android:name=".share.AddToQueue"
-            android:targetActivity=".share.ShareToSpeakActivity"
+        <!-- "Murmur" in share menus: a popup with Add to queue, Save for later and Open in Murmur. -->
+        <activity
+            android:name=".share.ShareOptionsActivity"
             android:exported="true"
-            android:enabled="true"
-            android:label="@string/share_queue_label"
-            android:icon="@mipmap/ic_launcher">
-            <intent-filter android:label="@string/share_queue_label">
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="app.murmur.share"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:theme="@style/Theme.Murmur.Invisible">
+            <intent-filter android:label="@string/app_name">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
@@ -109,34 +111,12 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/epub+zip" />
             </intent-filter>
-            <intent-filter android:label="@string/share_queue_label">
+            <intent-filter android:label="@string/app_name">
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".share.SaveForLater"
-            android:targetActivity=".share.ShareToSpeakActivity"
-            android:exported="true"
-            android:enabled="true"
-            android:label="@string/share_save_label"
-            android:icon="@mipmap/ic_launcher">
-            <intent-filter android:label="@string/share_save_label">
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-                <data android:mimeType="text/html" />
-                <data android:mimeType="application/pdf" />
-                <data android:mimeType="application/epub+zip" />
-            </intent-filter>
-            <intent-filter android:label="@string/share_save_label">
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity-alias>
+        </activity>
 
         <!-- Asks whether to resume or import again when a shared page is already saved. -->
         <activity

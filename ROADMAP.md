@@ -23,11 +23,14 @@ When a shared web page is already in the library, ask what to do instead of alwa
 - Setting: **When sharing a saved page**: Ask (default), Resume, Import again
 - Share → speak normally runs without opening the app, so the popup needs its own small dialog activity shown over the app you shared from.
 
-### Add to queue and Save for later — Done
-Two more entries in other apps' share menus, next to **Read aloud now**:
-- **Add to queue**: read it after what's playing, or now if nothing is
-- **Save for later**: add it to the library without reading it aloud. Needs no voice, and an item already saved is left as it is.
-- Settings → Sharing → **Share menu** turns either entry off for people who only want one.
+### Share menu: Read aloud now, and Murmur — Done
+Murmur has two entries in other apps' share menus:
+- **Read aloud now**: starts reading right away, with nothing in between (unchanged).
+- **Murmur**: a popup over the app you shared from, with:
+  - **Add to queue**: read it after what's playing, or now if nothing is
+  - **Save for later**: add it to the library without reading it. Needs no voice. Hidden when the link is already saved.
+  - **Open in Murmur**: import it and open it on screen in the reader, without playing
+- When a shared link is already in the library, the popup shows its title and says so.
 
 ### Quick Settings tile to read the clipboard — Planned
 A **Read clipboard** tile in Quick Settings that reads whatever text you last copied, from any app.
@@ -75,10 +78,11 @@ Settings → Notification reading. Off by default; needs notification access.
 
 ### Reader mode — Done
 Articles can be read on screen as well as listened to, without getting in the way of listening.
+- **Open in Murmur** in the share menu popup opens an article straight into the reader.
 - Opening an article while something else plays doesn't interrupt it. The article opens for reading with a **Listen** button that switches the player to it, starting from the top of the screen.
 - One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
-- **Text settings** (the Aa button, also in Settings → Appearance → Reader): text size, sans serif or serif, line spacing, and **Keep screen on** while reading.
+- **Text settings** (the text size button, also in Settings → Appearance → Reader): text size, sans serif or serif, line spacing, and **Keep screen on** while reading.
 - The header shows listening and reading time ("51 min listen · 34 min read").
 - Not yet: selecting and copying text, bookmarks.
 

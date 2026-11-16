@@ -40,33 +40,12 @@ class ShareToSpeakActivity : Activity() {
     }
 
     private fun handle(intent: Intent) {
-        // "Add to queue" and "Save for later" are aliases of this activity in the share menu.
-        val action = when (intent.component?.className) {
-            ShareTargets.ADD_TO_QUEUE -> ShareAction.QUEUE
-            ShareTargets.SAVE_FOR_LATER -> ShareAction.SAVE
-            else -> ShareAction.READ
-        }
-        val request = parse(intent)?.copy(action = action)
+        val request = parse(intent)
         if (request == null) {
             Toast.makeText(this, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
             return
         }
-        val c = container
-        if (action == ShareAction.SAVE) {
-            // Saving needs no voice and never asks about a saved copy.
-            start(this, request)
-            return
-        }
-        if (!c.voices.hasAnyInstalled()) {
-            // First run: there is nothing to speak with yet, so open the voice picker.
-            Toast.makeText(this, R.string.need_voice, Toast.LENGTH_LONG).show()
-            startActivity(
-                Intent(this, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_ROUTE, MainActivity.ROUTE_VOICES)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-            return
-        }
+        if (!checkVoice(this)) return
         savedCopyToAskAbout(request)?.let { saved ->
             startActivity(SavedPageActivity.intent(this, request, saved.title))
             return
@@ -86,6 +65,21 @@ class ShareToSpeakActivity : Activity() {
     }
 
     companion object {
+        /**
+         * True when a voice is installed. Otherwise, on a first run, says so and opens the voice
+         * picker, since there is nothing to speak with yet.
+         */
+        fun checkVoice(context: Context): Boolean {
+            if (context.container.voices.hasAnyInstalled()) return true
+            Toast.makeText(context, R.string.need_voice, Toast.LENGTH_LONG).show()
+            context.startActivity(
+                Intent(context, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_ROUTE, MainActivity.ROUTE_VOICES)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            return false
+        }
+
         /** Hands [request] to the playback service and says whether it's reading or queued. */
         fun start(context: Context, request: SpeakRequest) {
             val c = context.container
@@ -96,42 +90,43 @@ class ShareToSpeakActivity : Activity() {
             val queued = queueWhenBusy && c.reader.isBusy()
             Toast.makeText(context, if (queued) R.string.queued else R.string.reading, Toast.LENGTH_SHORT).show()
         }
-    }
 
-    private fun parse(intent: Intent): SpeakRequest? {
-        val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: intent.getStringExtra(Intent.EXTRA_TITLE)
-        return when (intent.action) {
-            Intent.ACTION_PROCESS_TEXT ->
-                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
-                    ?.takeIf { it.isNotBlank() }?.let { SpeakRequest(text = it) }
+        /** The text, link or file shared in [intent], if there is one. */
+        fun parse(intent: Intent): SpeakRequest? {
+            val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: intent.getStringExtra(Intent.EXTRA_TITLE)
+            return when (intent.action) {
+                Intent.ACTION_PROCESS_TEXT ->
+                    intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+                        ?.takeIf { it.isNotBlank() }?.let { SpeakRequest(text = it) }
 
-            Intent.ACTION_SEND -> {
-                val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                val html = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
-                val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                when {
-                    stream != null -> SpeakRequest(uri = stream, mime = intent.type, subject = subject)
-                    !text.isNullOrBlank() -> SpeakRequest(text = text, subject = subject)
-                    !html.isNullOrBlank() -> SpeakRequest(html = html, subject = subject)
-                    else -> null
+                Intent.ACTION_SEND -> {
+                    val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                    val html = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
+                    val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    when {
+                        stream != null -> SpeakRequest(uri = stream, mime = intent.type, subject = subject)
+                        !text.isNullOrBlank() -> SpeakRequest(text = text, subject = subject)
+                        !html.isNullOrBlank() -> SpeakRequest(html = html, subject = subject)
+                        else -> null
+                    }
                 }
-            }
 
-            // "Open with" on a web link.
-            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "http" || it.scheme == "https" }
-                ?.let { SpeakRequest(text = it.toString(), subject = subject) }
+                // "Open with" on a web link.
+                Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "http" || it.scheme == "https" }
+                    ?.let { SpeakRequest(text = it.toString(), subject = subject) }
 
-            Intent.ACTION_SEND_MULTIPLE -> {
-                val texts = intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT)?.map { it.toString() }
-                val streams = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                when {
-                    !texts.isNullOrEmpty() -> SpeakRequest(text = texts.joinToString("\n\n"), subject = subject)
-                    !streams.isNullOrEmpty() -> SpeakRequest(uri = streams.first(), mime = intent.type, subject = subject)
-                    else -> null
+                Intent.ACTION_SEND_MULTIPLE -> {
+                    val texts = intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT)?.map { it.toString() }
+                    val streams = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    when {
+                        !texts.isNullOrEmpty() -> SpeakRequest(text = texts.joinToString("\n\n"), subject = subject)
+                        !streams.isNullOrEmpty() -> SpeakRequest(uri = streams.first(), mime = intent.type, subject = subject)
+                        else -> null
+                    }
                 }
-            }
 
-            else -> null
+                else -> null
+            }
         }
     }
 }

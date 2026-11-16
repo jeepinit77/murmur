@@ -19,6 +19,7 @@ import app.murmur.MurmurApp
 import app.murmur.R
 import app.murmur.container
 import app.murmur.library.ImportException
+import app.murmur.library.Imports
 import app.murmur.library.PendingImportException
 import app.murmur.web.SharedLink
 import app.murmur.web.UrlNormalizer
@@ -167,17 +168,7 @@ class PlaybackService : MediaSessionService() {
         val onStage: (String) -> Unit = { stage -> ShareNotifications.showProgress(this, request.label(), stage) }
         val importAgain = request.importAgain || c.settings.savedPageMode.value == SavedPageMode.IMPORT_AGAIN
         try {
-            val outcome = when {
-                request.uri != null -> c.imports.save(c.importer.fromUri(request.uri, request.mime))
-                request.textFile != null -> {
-                    val f = File(request.textFile)
-                    val text = f.readText()
-                    f.delete()
-                    c.imports.text(text, request.subject, onStage, importAgain)
-                }
-                request.html != null -> c.imports.save(c.importer.fromHtml(request.html, request.subject))
-                else -> c.imports.text(request.text.orEmpty(), request.subject, onStage, importAgain)
-            }
+            val outcome = request.import(this, onStage, importAgain)
             ShareNotifications.cancelProgress(this)
             if (save) {
                 toast(getString(if (outcome.existing) R.string.saved_page_title else R.string.saved_to_library))
@@ -274,6 +265,22 @@ class PlaybackService : MediaSessionService() {
 
         fun speakIntent(context: Context, request: SpeakRequest): Intent =
             Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK).also { request.writeTo(context, it) }
+    }
+}
+
+/** Brings a shared item into the library (or finds the saved copy of a shared link). */
+suspend fun SpeakRequest.import(context: Context, onStage: (String) -> Unit, importAgain: Boolean = false): Imports.Outcome {
+    val c = context.container
+    return when {
+        uri != null -> c.imports.save(c.importer.fromUri(uri, mime))
+        textFile != null -> {
+            val f = File(textFile)
+            val text = f.readText()
+            f.delete()
+            c.imports.text(text, subject, onStage, importAgain)
+        }
+        html != null -> c.imports.save(c.importer.fromHtml(html, subject))
+        else -> c.imports.text(text.orEmpty(), subject, onStage, importAgain)
     }
 }
 
