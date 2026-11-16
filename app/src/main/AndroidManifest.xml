@@ -93,6 +93,51 @@
             </intent-filter>
         </activity>
 
+        <!-- Extra share menu entries; ShareToSpeakActivity tells them apart by component name. -->
+        <activity-alias
+            android:name=".share.AddToQueue"
+            android:targetActivity=".share.ShareToSpeakActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:label="@string/share_queue_label"
+            android:icon="@mipmap/ic_launcher">
+            <intent-filter android:label="@string/share_queue_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/epub+zip" />
+            </intent-filter>
+            <intent-filter android:label="@string/share_queue_label">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".share.SaveForLater"
+            android:targetActivity=".share.ShareToSpeakActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:label="@string/share_save_label"
+            android:icon="@mipmap/ic_launcher">
+            <intent-filter android:label="@string/share_save_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/epub+zip" />
+            </intent-filter>
+            <intent-filter android:label="@string/share_save_label">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Asks whether to resume or import again when a shared page is already saved. -->
         <activity
             android:name=".share.SavedPageActivity"

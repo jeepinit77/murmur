@@ -34,4 +34,8 @@
     <string name="channel_notification_reading">Notification reading</string>
     <string name="play">Play</string>
     <string name="dismiss">Dismiss</string>
+    <string name="share_queue_label">Add to queue</string>
+    <string name="share_save_label">Save for later</string>
+    <string name="saving">Saving to your library…</string>
+    <string name="saved_to_library">Saved to your library</string>
 </resources>

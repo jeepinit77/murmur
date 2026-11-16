@@ -80,6 +80,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import app.murmur.text.SentenceSegmenter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withContext
 
 private sealed interface ReaderRow {
     data class Header(val document: Document) : ReaderRow
@@ -112,6 +126,18 @@ private fun buildRows(content: ReaderContent): Pair<List<ReaderRow>, IntArray> {
     return rows to rowOfSegment
 }
 
+/** The first sentence at or after each row, where reading from that row would start. */
+private fun firstSegmentOfRows(rows: List<ReaderRow>, segmentCount: Int): IntArray {
+    val out = IntArray(rows.size)
+    var next = (segmentCount - 1).coerceAtLeast(0)
+    for (i in rows.indices.reversed()) {
+        val row = rows[i]
+        (row as? ReaderRow.Paragraph)?.segments?.firstOrNull()?.let { next = it.index }
+        out[i] = if (row is ReaderRow.Header) 0 else next
+    }
+    return out
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String? = null) {
@@ -137,13 +163,96 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
         }
     }
 
+    // Opening an article never interrupts what's playing: while something else plays, the article
+    // is loaded just for reading. Otherwise it goes into the player, ready to listen.
+    var readingCopy by remember(docId) { mutableStateOf<ReaderContent?>(null) }
     LaunchedEffect(docId) {
-        if (docId != null && reader.content.value?.docId != docId) reader.openFromLibrary(docId, autoplay = false)
+        if (docId == null || reader.content.value?.docId == docId) return@LaunchedEffect
+        if (reader.isBusy()) {
+            val doc = c.library.load(docId) ?: return@LaunchedEffect
+            val segments = withContext(Dispatchers.Default) { SentenceSegmenter().segment(doc) }
+            readingCopy = ReaderContent(docId, doc, segments)
+        } else {
+            reader.openFromLibrary(docId, autoplay = false)
+        }
     }
 
-    val current = content?.takeIf { docId == null || it.docId == docId }
+    val inPlayer = content?.takeIf { docId == null || it.docId == docId }
+    val current = inPlayer ?: readingCopy
+    // Listening: this article is playing. Otherwise the screen is for reading, and scrolling moves
+    // the place where listening would start.
+    val listening = inPlayer != null && state.docId == inPlayer.docId && state.playWhenReady && !state.ended
     val layout = remember(current) { current?.let { buildRows(it) } }
+    val rowStarts = remember(layout) { layout?.let { firstSegmentOfRows(it.first, current?.segments?.size ?: 0) } }
     val listState = rememberLazyListState()
+    val styles = rememberArticleStyles()
+    var textSheetOpen by remember { mutableStateOf(false) }
+    // Set when scrolling while reading moved the place; the highlight stays hidden until listening resumes.
+    var movedByReading by remember(docId) { mutableStateOf(false) }
+
+    /** The sentence at the top of the screen. */
+    fun readingIndex(): Int {
+        val starts = rowStarts ?: return 0
+        val first = listState.layoutInfo.visibleItemsInfo.firstOrNull() ?: return 0
+        // A row mostly scrolled off the top counts as read.
+        val row = if (-first.offset > first.size / 2) first.index + 1 else first.index
+        return starts.getOrElse(row) { starts.lastOrNull() ?: 0 }
+    }
+
+    // Start at the saved place: where listening stopped or reading left off.
+    var placed by rememberSaveable(docId) { mutableStateOf(false) }
+    LaunchedEffect(layout != null) {
+        val l = layout ?: return@LaunchedEffect
+        if (placed) return@LaunchedEffect
+        placed = true
+        if (initialFind != null || listening) return@LaunchedEffect
+        val index = if (inPlayer != null) state.currentIndex else c.library.progressOf(current!!.docId)
+        val row = l.second.getOrNull(index) ?: 0
+        if (row > 0) listState.scrollToItem(row)
+    }
+
+    // While reading, the sentence at the top of the screen becomes the place to continue from,
+    // for listening and in the library. Reaching the end marks the article as done.
+    val inPlayerNow by rememberUpdatedState(inPlayer != null)
+    LaunchedEffect(layout, listening) {
+        val l = layout ?: return@LaunchedEffect
+        val id = current?.docId ?: return@LaunchedEffect
+        if (listening) {
+            movedByReading = false
+            return@LaunchedEffect
+        }
+        snapshotFlow { if (listState.isScrollInProgress) null else readingIndex() }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .drop(1) // where the screen already was
+            .collect { index ->
+                val saved = if (inPlayerNow) reader.state.value.currentIndex else c.library.progressOf(id)
+                if (l.second.getOrNull(saved) != l.second.getOrNull(index)) {
+                    if (inPlayerNow) reader.seekTo(index) else c.library.setProgress(id, index)
+                    movedByReading = true
+                }
+                if (!listState.canScrollForward) c.library.setFinished(id, true)
+            }
+    }
+
+    val keepScreenOn by c.settings.keepScreenOn.collectAsStateWithLifecycle()
+    if (keepScreenOn && current != null && !listening) {
+        val view = LocalView.current
+        DisposableEffect(view) {
+            view.keepScreenOn = true
+            onDispose { view.keepScreenOn = false }
+        }
+    }
+
+    fun listenFromHere() {
+        val cur = current ?: return
+        if (!c.voices.hasAnyInstalled()) {
+            onVoices()
+            return
+        }
+        val index = readingIndex()
+        scope.launch { reader.open(cur.docId, cur.document, startIndex = index, autoplay = true) }
+    }
     val headerHidden by remember(layout) { derivedStateOf { layout == null || listState.firstVisibleItemIndex > 0 } }
     var userScrolled by remember { mutableStateOf(false) }
 
@@ -178,7 +287,8 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
     BackHandler(enabled = findQuery != null) { findQuery = null }
 
     // Follow along while speaking, unless the user is scrolling around.
-    LaunchedEffect(state.currentIndex, layout) {
+    LaunchedEffect(state.currentIndex, layout, listening) {
+        if (!listening) return@LaunchedEffect
         val rowIndex = layout?.second?.getOrNull(state.currentIndex) ?: return@LaunchedEffect
         if (listState.isScrollInProgress) {
             userScrolled = true
@@ -230,6 +340,7 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                     val doc = current?.document
                     if (doc != null) {
                         IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
+                        IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
                     }
                     if (doc != null && doc.chapters.size >= 2) {
                         IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
@@ -269,6 +380,17 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                 },
             )
         },
+        floatingActionButton = {
+            // Another item is playing: offer to listen to this one instead, from where the reader is.
+            if (inPlayer == null && current != null) {
+                ExtendedFloatingActionButton(
+                    onClick = { listenFromHere() },
+                    expanded = !listState.lastScrolledForward,
+                    icon = { Icon(Icons.Default.Headphones, null) },
+                    text = { Text("Listen") },
+                )
+            }
+        },
         bottomBar = {
             if (state.docId != null) {
                 val playing = c.library.meta(state.docId!!)
@@ -294,7 +416,8 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
             return@Scaffold
         }
         val (rows, _) = layout
-        val activeSegment = current?.segments?.getOrNull(state.currentIndex)
+        val activeSegment = current?.takeIf { inPlayer != null && (listening || !movedByReading) }
+            ?.segments?.getOrNull(state.currentIndex)
         Column(Modifier.fillMaxSize().padding(padding)) {
         if (reloading) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.notice?.let { notice ->
@@ -315,7 +438,7 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                     is ReaderRow.Header -> ArticleHeader(row.document, current?.let { c.library.meta(it.docId) }, state.speed)
                     is ReaderRow.Heading -> Text(
                         row.text,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = styles.heading,
                         modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
                     )
                     is ReaderRow.Paragraph -> ParagraphText(
@@ -323,7 +446,9 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
                         active = activeSegment?.takeIf { it in row.segments },
                         found = matchesByParagraph[row.chapter to row.paragraph].orEmpty(),
                         currentFound = matches.getOrNull(findIndex),
-                        onTapSegment = { seg ->
+                        style = styles.body,
+                        // Tapping a sentence listens from there, but never takes over another item that's playing.
+                        onTapSegment = if (inPlayer == null) null else { seg ->
                             reader.seekTo(seg.index)
                             if (!state.playWhenReady) reader.play()
                         },
@@ -337,14 +462,30 @@ fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initi
     if (chaptersOpen && current != null) {
         ChapterSheet(
             content = current,
-            currentChapter = current.segments.getOrNull(state.currentIndex)?.chapter ?: 0,
+            currentChapter = current.segments.getOrNull(if (listening) state.currentIndex else readingIndex())?.chapter ?: 0,
             speed = state.speed,
             onPick = { chapter ->
                 chaptersOpen = false
-                reader.seekToChapter(chapter)
+                if (listening) {
+                    reader.seekToChapter(chapter)
+                } else {
+                    val segment = current.segments.firstOrNull { it.chapter >= chapter }
+                    val row = segment?.let { layout?.second?.getOrNull(it.index) }
+                    if (row != null) scope.launch { listState.scrollToItem(row) }
+                }
             },
             onDismiss = { chaptersOpen = false },
         )
+    }
+    if (textSheetOpen) {
+        ModalBottomSheet(onDismissRequest = { textSheetOpen = false }) {
+            Text(
+                "Text settings",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 24.dp)) { ReaderTextControls() }
+        }
     }
 }
 
@@ -372,7 +513,8 @@ private fun ArticleHeader(document: Document, meta: DocMeta?, speed: Float) {
             }
         }
         Text(document.title, style = MaterialTheme.typography.headlineMedium)
-        val line = listOfNotNull(document.author, PageMetadata.formatDate(document.published), ListeningTime.label(words, speed))
+        val time = "${ListeningTime.shortLabel(words, speed)} listen · ${ListeningTime.readingLabel(words)} read"
+        val line = listOfNotNull(document.author, PageMetadata.formatDate(document.published), time)
         Text(
             line.joinToString(" · "),
             style = MaterialTheme.typography.bodyMedium,
@@ -446,7 +588,8 @@ private fun ParagraphText(
     active: Segment?,
     found: List<TextMatch>,
     currentFound: TextMatch?,
-    onTapSegment: (Segment) -> Unit,
+    style: TextStyle,
+    onTapSegment: ((Segment) -> Unit)?,
 ) {
     val scheme = MaterialTheme.colorScheme
     val text: AnnotatedString = remember(row, active, found, currentFound, scheme) {
@@ -464,8 +607,7 @@ private fun ParagraphText(
     val highlight = scheme.primaryContainer.copy(alpha = 0.75f)
     Text(
         text = text,
-        // Article text keeps the phone's font; Figtree is for the interface.
-        style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Default, fontSize = 19.sp, lineHeight = 30.sp),
+        style = style,
         onTextLayout = { layoutResult = it },
         modifier = Modifier
             .fillMaxWidth()
@@ -491,7 +633,8 @@ private fun ParagraphText(
                     )
                 }
             }
-            .pointerInput(row) {
+            .pointerInput(row, onTapSegment) {
+                if (onTapSegment == null) return@pointerInput
                 detectTapGestures { pos ->
                     val offset = layoutResult?.getOffsetForPosition(pos) ?: return@detectTapGestures
                     val seg = row.segments.firstOrNull { offset in it.start until it.end }

@@ -6,6 +6,8 @@ import kotlin.math.roundToInt
 object ListeningTime {
     /** Typical neural TTS pace at 1x, in words per minute. */
     const val WORDS_PER_MINUTE = 160
+    /** Typical silent reading pace, in words per minute. */
+    const val READING_WORDS_PER_MINUTE = 238
 
     private val WORD = Regex("""[\p{L}\p{N}]+(?:['’][\p{L}]+)?""")
 
@@ -23,6 +25,9 @@ object ListeningTime {
         val rest = total % 60
         return if (rest == 0) "$h hr" else "$h hr $rest min"
     }
+
+    /** Silent reading time, "< 1 min" for short items. */
+    fun readingLabel(words: Int): String = shortLabel(words, READING_WORDS_PER_MINUTE / WORDS_PER_MINUTE.toFloat())
 
     /** Like [label], but "< 1 min" for short items, to fit library rows. */
     fun shortLabel(words: Int, speed: Float = 1f): String =

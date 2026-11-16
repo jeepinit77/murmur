@@ -16,6 +16,16 @@ enum class ShareMode { REPLACE, QUEUE }
 /** What to do when a shared web page is already in the library. */
 enum class SavedPageMode { ASK, RESUME, IMPORT_AGAIN }
 
+/** Typeface for article text in the reader. */
+enum class ReaderFont(val label: String) { SANS_SERIF("Sans serif"), SERIF("Serif") }
+
+/** Line height for article text in the reader, as a multiple of the text size. */
+enum class LineSpacing(val label: String, val multiplier: Float) {
+    COMPACT("Compact", 1.35f),
+    NORMAL("Normal", 1.6f),
+    WIDE("Wide", 1.9f),
+}
+
 /** When notifications may be read automatically, depending on the screen. */
 enum class AutoPlayScreen { SCREEN_ON, SCREEN_OFF, ANY }
 
@@ -123,6 +133,36 @@ class Settings(context: Context) {
     /** Pure black instead of dark gray in the dark theme. */
     val blackBackground: StateFlow<Boolean> = _blackBackground.asStateFlow()
     fun setBlackBackground(on: Boolean) = putBool(KEY_BLACK_BACKGROUND, on, _blackBackground)
+
+    // ---- Reader text ---------------------------------------------------------------------
+
+    private val _textSize = MutableStateFlow(prefs.getInt(KEY_TEXT_SIZE, DEFAULT_TEXT_SIZE))
+    /** Article text size in the reader, in sp. */
+    val textSize: StateFlow<Int> = _textSize.asStateFlow()
+    fun setTextSize(sp: Int) {
+        val v = sp.coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
+        _textSize.value = v
+        prefs.edit { putInt(KEY_TEXT_SIZE, v) }
+    }
+
+    private val _readerFont = MutableStateFlow(enumPref(KEY_READER_FONT, ReaderFont.SANS_SERIF))
+    val readerFont: StateFlow<ReaderFont> = _readerFont.asStateFlow()
+    fun setReaderFont(f: ReaderFont) {
+        _readerFont.value = f
+        prefs.edit { putString(KEY_READER_FONT, f.name) }
+    }
+
+    private val _lineSpacing = MutableStateFlow(enumPref(KEY_LINE_SPACING, LineSpacing.NORMAL))
+    val lineSpacing: StateFlow<LineSpacing> = _lineSpacing.asStateFlow()
+    fun setLineSpacing(l: LineSpacing) {
+        _lineSpacing.value = l
+        prefs.edit { putString(KEY_LINE_SPACING, l.name) }
+    }
+
+    private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
+    /** Keep the screen on while an article is open and not playing. */
+    val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
+    fun setKeepScreenOn(on: Boolean) = putBool(KEY_KEEP_SCREEN_ON, on, _keepScreenOn)
 
     fun extractOptions() = ExtractOptions(
         headingsAsChapters = headingsAsChapters.value,
@@ -288,6 +328,13 @@ class Settings(context: Context) {
         private const val KEY_PALETTE = "palette"
         private const val KEY_BLACK_BACKGROUND = "black_background"
         private const val KEY_LANG_VOICE = "voice_for_"
+        private const val KEY_TEXT_SIZE = "reader_text_size"
+        private const val KEY_READER_FONT = "reader_font"
+        private const val KEY_LINE_SPACING = "reader_line_spacing"
+        private const val KEY_KEEP_SCREEN_ON = "reader_keep_screen_on"
+        const val DEFAULT_TEXT_SIZE = 19
+        const val MIN_TEXT_SIZE = 14
+        const val MAX_TEXT_SIZE = 30
         private const val KEY_CLIPBOARD_DISMISSED = "clipboard_dismissed"
         private const val KEY_NR_ENABLED = "notification_reading"
         private const val KEY_NR_APPS = "notification_reading_apps"

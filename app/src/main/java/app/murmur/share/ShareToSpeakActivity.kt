@@ -10,6 +10,7 @@ import androidx.core.content.IntentCompat
 import app.murmur.R
 import app.murmur.container
 import app.murmur.playback.PlaybackService
+import app.murmur.playback.ShareAction
 import app.murmur.playback.SpeakRequest
 import app.murmur.library.DocMeta
 import app.murmur.settings.SavedPageMode
@@ -39,12 +40,23 @@ class ShareToSpeakActivity : Activity() {
     }
 
     private fun handle(intent: Intent) {
-        val request = parse(intent)
+        // "Add to queue" and "Save for later" are aliases of this activity in the share menu.
+        val action = when (intent.component?.className) {
+            ShareTargets.ADD_TO_QUEUE -> ShareAction.QUEUE
+            ShareTargets.SAVE_FOR_LATER -> ShareAction.SAVE
+            else -> ShareAction.READ
+        }
+        val request = parse(intent)?.copy(action = action)
         if (request == null) {
             Toast.makeText(this, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
             return
         }
         val c = container
+        if (action == ShareAction.SAVE) {
+            // Saving needs no voice and never asks about a saved copy.
+            start(this, request)
+            return
+        }
         if (!c.voices.hasAnyInstalled()) {
             // First run: there is nothing to speak with yet, so open the voice picker.
             Toast.makeText(this, R.string.need_voice, Toast.LENGTH_LONG).show()
@@ -77,8 +89,11 @@ class ShareToSpeakActivity : Activity() {
         /** Hands [request] to the playback service and says whether it's reading or queued. */
         fun start(context: Context, request: SpeakRequest) {
             val c = context.container
-            val queued = c.settings.shareMode.value == ShareMode.QUEUE && c.reader.isBusy()
             PlaybackService.speak(context, request)
+            // The service says when a saved item is ready.
+            if (request.action == ShareAction.SAVE) return
+            val queueWhenBusy = request.action == ShareAction.QUEUE || c.settings.shareMode.value == ShareMode.QUEUE
+            val queued = queueWhenBusy && c.reader.isBusy()
             Toast.makeText(context, if (queued) R.string.queued else R.string.reading, Toast.LENGTH_SHORT).show()
         }
     }

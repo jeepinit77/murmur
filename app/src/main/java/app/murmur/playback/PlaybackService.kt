@@ -99,13 +99,15 @@ class PlaybackService : MediaSessionService() {
             ACTION_SPEAK -> {
                 // We were started with startForegroundService(): promote immediately. Media3 replaces
                 // this notification with the media-style one (same id) once playback state updates.
+                val request = SpeakRequest.fromServiceIntent(intent)
                 ServiceCompat.startForeground(
-                    this, NOTIFICATION_ID, preparingNotification(),
+                    this, NOTIFICATION_ID,
+                    preparingNotification(if (request?.action == ShareAction.SAVE) R.string.saving else R.string.preparing),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
                 intent.getIntExtra(ShareNotifications.EXTRA_DISMISS, 0).takeIf { it != 0 }
                     ?.let { ShareNotifications.cancel(this, it) }
-                SpeakRequest.fromServiceIntent(intent)?.let { enqueueRequest(it) }
+                request?.let { enqueueRequest(it) }
             }
             ACTION_SPEAK_NOTIFICATION -> {
                 ServiceCompat.startForeground(
@@ -153,11 +155,13 @@ class PlaybackService : MediaSessionService() {
 
     private suspend fun handleSpeak(request: SpeakRequest) {
         val c = container
+        val save = request.action == ShareAction.SAVE
         // In "start reading the new item" mode, a later share wins; earlier ones are queued.
         val laterShareWaiting = pending.get() > 0
-        val queue = (c.settings.shareMode.value == ShareMode.QUEUE && c.reader.isBusy()) || laterShareWaiting
-        val keepPlaying = !queue && c.settings.keepPlayingWhileLoading.value && c.reader.isBusy()
-        val showInPlayer = !queue && !keepPlaying
+        val queueWhenBusy = request.action == ShareAction.QUEUE || c.settings.shareMode.value == ShareMode.QUEUE
+        val queue = !save && ((queueWhenBusy && c.reader.isBusy()) || laterShareWaiting)
+        val keepPlaying = !save && !queue && c.settings.keepPlayingWhileLoading.value && c.reader.isBusy()
+        val showInPlayer = !save && !queue && !keepPlaying
         if (showInPlayer) c.reader.showPreparing(request.label())
         ShareNotifications.showProgress(this, request.label(), null)
         val onStage: (String) -> Unit = { stage -> ShareNotifications.showProgress(this, request.label(), stage) }
@@ -175,7 +179,10 @@ class PlaybackService : MediaSessionService() {
                 else -> c.imports.text(request.text.orEmpty(), request.subject, onStage, importAgain)
             }
             ShareNotifications.cancelProgress(this)
-            if (queue) {
+            if (save) {
+                toast(getString(if (outcome.existing) R.string.saved_page_title else R.string.saved_to_library))
+                stopIfIdle()
+            } else if (queue) {
                 c.reader.enqueue(outcome.meta.id)
                 toast(getString(if (outcome.existing) R.string.queued_saved else R.string.queued))
             } else {
@@ -214,10 +221,10 @@ class PlaybackService : MediaSessionService() {
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
-    private fun preparingNotification() =
+    private fun preparingNotification(title: Int = R.string.preparing) =
         NotificationCompat.Builder(this, MurmurApp.CHANNEL_PLAYBACK)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.preparing))
+            .setContentTitle(getString(title))
             .setContentIntent(openPlayer)
             .setOngoing(true)
             .setSilent(true)
@@ -270,6 +277,16 @@ class PlaybackService : MediaSessionService() {
     }
 }
 
+/** What to do with a shared item. */
+enum class ShareAction {
+    /** Read it now, or queue it, depending on the Sharing settings. */
+    READ,
+    /** Read it after what's playing, or now if nothing is. */
+    QUEUE,
+    /** Save it to the library without reading it. */
+    SAVE,
+}
+
 /** What to read, carried from the share activity to the service. */
 data class SpeakRequest(
     val text: String? = null,
@@ -281,6 +298,7 @@ data class SpeakRequest(
     val textFile: String? = null,
     /** For a link already in the library: fetch it again and replace the saved copy. */
     val importAgain: Boolean = false,
+    val action: ShareAction = ShareAction.READ,
 ) {
     fun label(): String = subject?.takeIf { it.isNotBlank() }
         ?: linkUrl()?.let { link -> SharedLink.parse(text.orEmpty())?.titleHint ?: UrlNormalizer.displayHost(link) }
@@ -294,6 +312,7 @@ data class SpeakRequest(
         subject?.let { intent.putExtra(EXTRA_SUBJECT, it) }
         mime?.let { intent.putExtra(EXTRA_MIME, it) }
         if (importAgain) intent.putExtra(EXTRA_IMPORT_AGAIN, true)
+        intent.putExtra(EXTRA_ACTION, action.name)
         html?.let { intent.putExtra(EXTRA_HTML, it.take(MAX_INLINE)) }
         if (uri != null) {
             intent.putExtra(EXTRA_URI, uri)
@@ -320,6 +339,7 @@ data class SpeakRequest(
         private const val EXTRA_MIME = "mime"
         private const val EXTRA_TEXT_FILE = "text_file"
         private const val EXTRA_IMPORT_AGAIN = "import_again"
+        private const val EXTRA_ACTION = "share_action"
         private const val MAX_INLINE = 200_000
 
         fun fromServiceIntent(intent: Intent): SpeakRequest? {
@@ -331,6 +351,8 @@ data class SpeakRequest(
                 mime = intent.getStringExtra(EXTRA_MIME),
                 textFile = intent.getStringExtra(EXTRA_TEXT_FILE),
                 importAgain = intent.getBooleanExtra(EXTRA_IMPORT_AGAIN, false),
+                action = runCatching { ShareAction.valueOf(intent.getStringExtra(EXTRA_ACTION) ?: "") }
+                    .getOrDefault(ShareAction.READ),
             )
             return if (r.text == null && r.html == null && r.uri == null && r.textFile == null) null else r
         }

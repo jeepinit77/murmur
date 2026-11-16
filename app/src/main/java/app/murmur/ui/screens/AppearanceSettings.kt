@@ -36,7 +36,7 @@ import app.murmur.ui.theme.ThemeMode
 import app.murmur.ui.theme.isDark
 import app.murmur.ui.theme.wallpaperColorsAvailable
 
-/** Theme, Black background and Color settings. */
+/** Theme, Black background, Color and reader text settings. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AppearanceSettings() {
@@ -75,6 +75,9 @@ internal fun AppearanceSettings() {
                     )
                 }
         }
+    }
+    SettingsGroup("Reader") {
+        ReaderTextControls()
     }
 }
 
