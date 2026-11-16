@@ -90,6 +90,15 @@ class MainActivity : ComponentActivity() {
                             initialFind = entry.arguments?.getString("find"),
                             onBack = { nav.popBackStack() },
                             onVoices = { nav.navigate(ROUTE_VOICES) },
+                            onReaderMode = { id -> nav.navigate("$ROUTE_READER_MODE/$id") },
+                        )
+                    }
+                    composable("$ROUTE_READER_MODE/{id}") { entry ->
+                        ReaderScreen(
+                            docId = entry.arguments?.getString("id"),
+                            onBack = { nav.popBackStack() },
+                            onVoices = { nav.navigate(ROUTE_VOICES) },
+                            readerMode = true,
                         )
                     }
                     composable(ROUTE_NOW_PLAYING) {
@@ -97,6 +106,7 @@ class MainActivity : ComponentActivity() {
                             docId = null,
                             onBack = { if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) },
                             onVoices = { nav.navigate(ROUTE_VOICES) },
+                            onReaderMode = { id -> nav.navigate("$ROUTE_READER_MODE/$id") },
                         )
                     }
                     composable(ROUTE_VOICES) {
@@ -182,6 +192,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_SHOW_PLAYER = "show_player"
         const val ROUTE_LIBRARY = "library"
         const val ROUTE_READER = "reader"
+        const val ROUTE_READER_MODE = "reader_mode"
         const val ROUTE_NOW_PLAYING = "now_playing"
         const val ROUTE_VOICES = "voices"
         const val ROUTE_VOICE_DOWNLOADS = "voice_downloads"

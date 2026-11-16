@@ -84,8 +84,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
@@ -161,13 +159,23 @@ private fun firstSegmentOfRows(rows: List<ReaderRow>, segmentCount: Int): IntArr
     return out
 }
 
+/**
+ * An article, or the one in the player when [docId] is null. With [readerMode], it's the reader
+ * mode screen: full screen, with the text settings and reading colors, where a tap shows or hides
+ * the bars. Otherwise articles use the standard style, a tap listens from that sentence, and
+ * [onReaderMode] opens the article in reader mode.
+ */
 @Composable
-fun ReaderScreen(docId: String?, onBack: () -> Unit, onVoices: () -> Unit, initialFind: String? = null) {
-    // Reader mode: full screen, with the text settings and reading colors. Outside it, articles
-    // use the standard style and taps listen from that sentence.
-    var readerMode by rememberSaveable { mutableStateOf(false) }
+fun ReaderScreen(
+    docId: String?,
+    onBack: () -> Unit,
+    onVoices: () -> Unit,
+    initialFind: String? = null,
+    readerMode: Boolean = false,
+    onReaderMode: ((docId: String) -> Unit)? = null,
+) {
     ReadingTheme(enabled = readerMode) {
-        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderModeChange = { readerMode = it })
+        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderMode)
     }
 }
 
@@ -179,7 +187,7 @@ private fun ReaderScreenBody(
     onVoices: () -> Unit,
     initialFind: String?,
     readerMode: Boolean,
-    onReaderModeChange: (Boolean) -> Unit,
+    onReaderMode: ((String) -> Unit)?,
 ) {
     val context = LocalContext.current
     val c = context.container
@@ -240,7 +248,8 @@ private fun ReaderScreenBody(
     }
 
     // Start at the saved place: where listening stopped or reading left off.
-    var placed by rememberSaveable(docId) { mutableStateOf(false) }
+    // Placed again on coming back from reader mode, where the place may have moved.
+    var placed by remember(docId) { mutableStateOf(false) }
     LaunchedEffect(layout != null) {
         val l = layout ?: return@LaunchedEffect
         if (placed) return@LaunchedEffect
@@ -358,7 +367,7 @@ private fun ReaderScreenBody(
     // of listening from that sentence, so getting ready to select text never starts reading aloud.
     // Scrolling down hides the bars again; scrolling up or reaching either end brings them back.
     // Back turns reader mode off. While finding or loading, the bars stay.
-    var chromeShown by rememberSaveable { mutableStateOf(true) }
+    var chromeShown by rememberSaveable { mutableStateOf(!readerMode) }
     val canHideChrome = readerMode && findQuery == null && layout != null && !menuOpen
     val showChrome = chromeShown || !canHideChrome
     val hideOnScroll = remember {
@@ -374,18 +383,17 @@ private fun ReaderScreenBody(
         snapshotFlow { !listState.canScrollBackward || !listState.canScrollForward }
             .collect { atEnd -> if (atEnd) chromeShown = true }
     }
-    BackHandler(enabled = readerMode) {
-        onReaderModeChange(false)
-        chromeShown = true
-    }
     val view = LocalView.current
-    DisposableEffect(showChrome) {
-        val window = (view.context as? android.app.Activity)?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (showChrome) controller?.show(WindowInsetsCompat.Type.systemBars())
-        else controller?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    // Only reader mode hides the phone's bars, so the article screen underneath never undoes it.
+    if (readerMode) {
+        DisposableEffect(showChrome) {
+            val window = (view.context as? android.app.Activity)?.window
+            val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (showChrome) controller?.show(WindowInsetsCompat.Type.systemBars())
+            else controller?.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+        }
     }
     val density = LocalDensity.current
     // The top bar's tallest height, so it doesn't shrink while the status bar comes back.
@@ -518,17 +526,10 @@ private fun ReaderScreenBody(
                                     if (readerMode) {
                                         IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
                                     }
-                                    IconToggleButton(
-                                        checked = readerMode,
-                                        onCheckedChange = { on ->
-                                            onReaderModeChange(on)
-                                            chromeShown = !on
-                                        },
-                                        colors = IconButtonDefaults.iconToggleButtonColors(
-                                            checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                            checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        ),
-                                    ) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
+                                    val id = current?.docId
+                                    if (!readerMode && onReaderMode != null && id != null) {
+                                        IconButton(onClick = { onReaderMode(id) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
+                                    }
                                 }
                                 if (doc != null && doc.chapters.size >= 2) {
                                     IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
