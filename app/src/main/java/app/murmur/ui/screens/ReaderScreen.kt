@@ -80,6 +80,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import app.murmur.text.TextMatch
 import app.murmur.text.TextSearch
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.pointer.positionChanged
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.ViewCompat
@@ -241,7 +244,6 @@ private fun ReaderScreenBody(
     val rowStarts = remember(layout) { layout?.let { firstSegmentOfRows(it.first, current?.segments?.size ?: 0) } }
     val listState = rememberLazyListState()
     val styles = if (readerMode) rememberArticleStyles() else standardArticleStyles()
-    var textSheetOpen by remember { mutableStateOf(false) }
     // Set when scrolling while reading moved the place; the highlight stays hidden until listening resumes.
     var movedByReading by remember(docId) { mutableStateOf(false) }
 
@@ -399,14 +401,14 @@ private fun ReaderScreenBody(
             .collect { atEnd -> if (atEnd) chromeShown = true }
     }
     val view = LocalView.current
-    // Only reader mode hides the phone's bars, so the article screen underneath never undoes it.
+    // Reader mode keeps the phone's status and navigation bars hidden the whole time, as reading
+    // apps do; its own floating bars come and go. A swipe from the edge still shows them briefly.
     if (readerMode) {
-        DisposableEffect(showChrome) {
+        DisposableEffect(Unit) {
             val window = (view.context as? android.app.Activity)?.window
             val controller = window?.let { WindowCompat.getInsetsController(it, view) }
             controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (showChrome) controller?.show(WindowInsetsCompat.Type.systemBars())
-            else controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
             onDispose {
                 controller?.show(WindowInsetsCompat.Type.systemBars())
                 // Leaving reader mode: have the screen underneath measure the bars again.
@@ -425,6 +427,27 @@ private fun ReaderScreenBody(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .nestedScroll(hideOnScroll)
+            // In reader mode, pinching changes the text size (and doesn't scroll).
+            .pointerInput(readerMode) {
+                if (!readerMode) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var startSize = 0
+                    var zoom = 1f
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed == 0) break
+                        if (pressed > 1) {
+                            if (startSize == 0) startSize = c.settings.textSize.value
+                            zoom *= event.calculateZoom()
+                            val size = (startSize * zoom).roundToInt()
+                            if (size != c.settings.textSize.value) c.settings.setTextSize(size)
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    }
+                }
+            }
             // In reader mode, a tap anywhere shows or hides the bars and never reaches the text
             // (where it would start listening). Long presses still select text.
             .pointerInput(readerMode) {
@@ -497,7 +520,7 @@ private fun ReaderScreenBody(
             // when the bars come back; keeping its space always puts the top bar below it.
             val statusBarSpace = if (readerMode) {
                 Modifier
-                    .background(MaterialTheme.colorScheme.surface)
+                    .then(if (findQuery != null) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier)
                     .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
                     .consumeWindowInsets(WindowInsets.statusBarsIgnoringVisibility)
             } else Modifier
@@ -529,14 +552,73 @@ private fun ReaderScreenBody(
                             )
                             return@TopChrome
                         }
+                        val doc = current?.document
+                        val meta = current?.let { c.library.meta(it.docId) }
+                        val hasChapters = doc != null && doc.chapters.size >= 2
+                        val moreItems: @Composable () -> Unit = {
+                            if (readerMode && doc != null) {
+                                // Back to the article, reading aloud from the sentence at the top of the screen.
+                                DropdownMenuItem(text = { Text("Listen from here") }, onClick = {
+                                    menuOpen = false
+                                    if (listenFromHere()) onBack()
+                                })
+                                DropdownMenuItem(text = { Text("Find in article") }, onClick = {
+                                    menuOpen = false
+                                    findQuery = ""
+                                })
+                                if (hasChapters) {
+                                    DropdownMenuItem(text = { Text("Chapters") }, onClick = {
+                                        menuOpen = false
+                                        chaptersOpen = true
+                                    })
+                                }
+                            }
+                            if (meta != null && meta.source.startsWith("http")) {
+                                DropdownMenuItem(text = { Text("Open original") }, onClick = {
+                                    menuOpen = false
+                                    openInBrowser(context, meta.source)
+                                })
+                                if (meta.isWeb) {
+                                    DropdownMenuItem(text = { Text("Reload") }, onClick = {
+                                        menuOpen = false
+                                        reloading = true
+                                        scope.launch {
+                                            try {
+                                                val (outcome, index) = c.imports.reload(meta.id)
+                                                reader.replaceDocument(meta.id, outcome.document, index)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, e.message ?: "Couldn't reload the article", Toast.LENGTH_LONG).show()
+                                            } finally {
+                                                reloading = false
+                                            }
+                                        }
+                                    })
+                                }
+                                DropdownMenuItem(text = { Text("Sign in to site") }, onClick = {
+                                    menuOpen = false
+                                    context.startActivity(SiteSignInActivity.intent(context, meta.source, meta.id))
+                                })
+                            }
+                        }
+                        if (readerMode) {
+                            // A floating bar, like a reading app's controls, rather than a full-width app bar.
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                ReaderModeBar(
+                                    onBack = onBack,
+                                    moreOpen = menuOpen,
+                                    onMoreOpenChange = { menuOpen = it },
+                                    moreItems = moreItems,
+                                )
+                            }
+                            return@TopChrome
+                        }
                         TopAppBar(
                             title = {
                                 AnimatedVisibility(visible = headerHidden, enter = fadeIn(), exit = fadeOut()) {
                                     Column {
                                         Text(current?.document?.title ?: state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         // Reading time left; while listening, the player shows listening time.
-                                        // In reader mode, the bottom bar shows it.
-                                        if (!listening && totalWords > 0 && !readerMode) {
+                                        if (!listening && totalWords > 0) {
                                             Text(
                                                 "${ListeningTime.readingLabel(totalWords - wordsRead)} left",
                                                 style = MaterialTheme.typography.labelMedium,
@@ -548,59 +630,20 @@ private fun ReaderScreenBody(
                             },
                             navigationIcon = { BackIcon(onBack) },
                             actions = {
-                                val doc = current?.document
                                 if (doc != null) {
                                     IconButton(onClick = { findQuery = "" }) { Icon(Icons.Default.Search, "Find in article") }
-                                    if (readerMode) {
-                                        IconButton(onClick = { textSheetOpen = true }) { Icon(Icons.Default.FormatSize, "Text settings") }
-                                    }
                                     val id = current?.docId
-                                    if (!readerMode && onReaderMode != null && id != null) {
+                                    if (onReaderMode != null && id != null) {
                                         IconButton(onClick = { onReaderMode(id) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
                                     }
                                 }
-                                if (doc != null && doc.chapters.size >= 2) {
+                                if (hasChapters) {
                                     IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
                                 }
-                                val meta = current?.let { c.library.meta(it.docId) }
-                                if (readerMode || meta?.source?.startsWith("http") == true) {
+                                if (meta?.source?.startsWith("http") == true) {
                                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
                                 }
-                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                    if (readerMode && doc != null) {
-                                        // Back to the article, reading aloud from the sentence at the top of the screen.
-                                        DropdownMenuItem(text = { Text("Listen from here") }, onClick = {
-                                            menuOpen = false
-                                            if (listenFromHere()) onBack()
-                                        })
-                                    }
-                                    if (meta != null && meta.source.startsWith("http")) {
-                                        DropdownMenuItem(text = { Text("Open original") }, onClick = {
-                                            menuOpen = false
-                                            openInBrowser(context, meta.source)
-                                        })
-                                        if (meta.isWeb) {
-                                            DropdownMenuItem(text = { Text("Reload") }, onClick = {
-                                                menuOpen = false
-                                                reloading = true
-                                                scope.launch {
-                                                    try {
-                                                        val (outcome, index) = c.imports.reload(meta.id)
-                                                        reader.replaceDocument(meta.id, outcome.document, index)
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, e.message ?: "Couldn't reload the article", Toast.LENGTH_LONG).show()
-                                                    } finally {
-                                                        reloading = false
-                                                    }
-                                                }
-                                            })
-                                        }
-                                        DropdownMenuItem(text = { Text("Sign in to site") }, onClick = {
-                                            menuOpen = false
-                                            context.startActivity(SiteSignInActivity.intent(context, meta.source, meta.id))
-                                        })
-                                    }
-                                }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) { moreItems() }
                             },
                         )
                 }
@@ -660,11 +703,20 @@ private fun ReaderScreenBody(
                     }
                     return layout?.second?.getOrNull(lo) ?: 0
                 }
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().onSizeChanged { bottomHeight = it.height },
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { bottomHeight = it.height }
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 2.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 chapterTitle.orEmpty(),
@@ -692,6 +744,7 @@ private fun ReaderScreenBody(
                             valueRange = 0f..1f,
                         )
                     }
+                }
                 }
             }
         }
@@ -754,19 +807,6 @@ private fun ReaderScreenBody(
             },
             onDismiss = { chaptersOpen = false },
         )
-    }
-    if (textSheetOpen) {
-        // No dimming, so the article above the sheet shows each change as it's made.
-        ModalBottomSheet(onDismissRequest = { textSheetOpen = false }, scrimColor = Color.Transparent) {
-            Text(
-                "Text settings",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-                ReaderTextControls()
-            }
-        }
     }
 }
 

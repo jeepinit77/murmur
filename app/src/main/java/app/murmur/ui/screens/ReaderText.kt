@@ -9,6 +9,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FormatLineSpacing
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
@@ -247,7 +267,7 @@ private fun TextSizeRow(size: Int, onChange: (Int) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Text size", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Text("$size", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(textSizeLabel(size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onChange(size - 1) }, enabled = size > min, modifier = Modifier.offset(x = (-12).dp)) {
@@ -293,4 +313,126 @@ private fun <T> SegmentedRow(
             }
         }
     }
+}
+
+/** Text size as a percentage of the standard size, as in "100%". */
+internal fun textSizeLabel(size: Int): String = "${(size * 100f / Settings.DEFAULT_TEXT_SIZE).roundToInt()}%"
+
+/**
+ * Reader mode's controls: a floating bar with Back, text size, and Font, Colors and Spacing menus,
+ * plus [moreItems] in a More options menu.
+ */
+@Composable
+internal fun ReaderModeBar(
+    onBack: () -> Unit,
+    moreOpen: Boolean,
+    onMoreOpenChange: (Boolean) -> Unit,
+    moreItems: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val settings = LocalContext.current.container.settings
+    val size by settings.textSize.collectAsStateWithLifecycle()
+    val font by settings.readerFont.collectAsStateWithLifecycle()
+    val spacing by settings.lineSpacing.collectAsStateWithLifecycle()
+    val margins by settings.readerMargins.collectAsStateWithLifecycle()
+    val colors by settings.readingColors.collectAsStateWithLifecycle()
+    var openMenu by remember { mutableStateOf<String?>(null) }
+    val scheme = MaterialTheme.colorScheme
+    val tonal = IconButtonDefaults.filledTonalIconButtonColors(
+        containerColor = scheme.secondaryContainer,
+        contentColor = scheme.onSecondaryContainer,
+    )
+
+    Surface(
+        shape = RoundedCornerShape(percent = 50),
+        color = scheme.surfaceContainerHigh,
+        shadowElevation = 6.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            IconButton(onClick = { settings.setTextSize(size - 1) }, enabled = size > Settings.MIN_TEXT_SIZE) {
+                Icon(Icons.Default.Remove, "Smaller text")
+            }
+            Text(textSizeLabel(size), style = MaterialTheme.typography.labelLarge)
+            IconButton(onClick = { settings.setTextSize(size + 1) }, enabled = size < Settings.MAX_TEXT_SIZE) {
+                Icon(Icons.Default.Add, "Larger text")
+            }
+            Spacer(Modifier.width(4.dp))
+
+            Box {
+                FilledTonalIconButton(onClick = { openMenu = "font" }, colors = tonal) { Icon(Icons.Default.TextFields, "Font") }
+                DropdownMenu(expanded = openMenu == "font", onDismissRequest = { openMenu = null }) {
+                    ReaderFont.entries.forEach { f ->
+                        val family = if (f == ReaderFont.SERIF) FontFamily.Serif else FontFamily.Default
+                        ChoiceItem(f.label, f == font, fontFamily = family) { settings.setReaderFont(f) }
+                    }
+                }
+            }
+            Box {
+                FilledTonalIconButton(onClick = { openMenu = "colors" }, colors = tonal) { Icon(Icons.Default.Palette, "Colors") }
+                DropdownMenu(expanded = openMenu == "colors", onDismissRequest = { openMenu = null }) {
+                    ReadingColors.entries.forEach { choice ->
+                        val paper = choice.paper()
+                        ChoiceItem(choice.label, choice == colors, leading = {
+                            Box(
+                                Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(paper?.background ?: scheme.background)
+                                    .border(1.dp, scheme.outline, CircleShape),
+                            )
+                        }) { settings.setReadingColors(choice) }
+                    }
+                }
+            }
+            Box {
+                FilledTonalIconButton(onClick = { openMenu = "spacing" }, colors = tonal) {
+                    Icon(Icons.Default.FormatLineSpacing, "Spacing")
+                }
+                DropdownMenu(expanded = openMenu == "spacing", onDismissRequest = { openMenu = null }) {
+                    MenuHeading("Line spacing")
+                    LineSpacing.entries.forEach { l -> ChoiceItem(l.label, l == spacing) { settings.setLineSpacing(l) } }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    MenuHeading("Margins")
+                    ReaderMargins.entries.forEach { m -> ChoiceItem(m.label, m == margins) { settings.setReaderMargins(m) } }
+                }
+            }
+
+            Box {
+                IconButton(onClick = { onMoreOpenChange(true) }) { Icon(Icons.Default.MoreVert, "More options") }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { onMoreOpenChange(false) }) { moreItems() }
+            }
+        }
+    }
+}
+
+/** A menu choice with a check mark when selected; the menu stays open so changes can be compared. */
+@Composable
+private fun ChoiceItem(
+    label: String,
+    selected: Boolean,
+    fontFamily: FontFamily? = null,
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(label, fontFamily = fontFamily) },
+        onClick = onClick,
+        leadingIcon = leading,
+        trailingIcon = { if (selected) Icon(Icons.Default.Check, "Selected") },
+    )
+}
+
+@Composable
+private fun MenuHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
