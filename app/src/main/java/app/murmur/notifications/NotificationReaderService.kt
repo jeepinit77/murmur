@@ -80,8 +80,16 @@ class NotificationReaderService : NotificationListenerService() {
             val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
             if (style != null && style.messages.isNotEmpty()) {
                 val messages = style.messages.mapNotNull { m ->
+                    val sender = m.person?.name?.toString()
                     val text = m.text?.toString()?.trim().orEmpty()
-                    if (text.isEmpty()) null else IncomingMessage(m.person?.name?.toString(), text, m.timestamp)
+                    val c = MessageKinds.classify(text, m.dataMimeType)
+                    when {
+                        c.kind != MessageKind.TEXT -> IncomingMessage(
+                            sender, text.ifEmpty { c.kind.label.replaceFirstChar { it.uppercase() } }, m.timestamp, c.kind, c.detail,
+                        )
+                        text.isEmpty() -> null
+                        else -> IncomingMessage(sender, text, m.timestamp)
+                    }
                 }
                 if (messages.isEmpty()) return null
                 return IncomingNotification(

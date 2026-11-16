@@ -9,8 +9,15 @@ data class IncomingMessage(
     val sender: String?,
     val text: String,
     val time: Long,
+    /** A photo, voice message, sticker and so on, recognized by [MessageKinds]. */
+    val kind: MessageKind = MessageKind.TEXT,
+    /** The caption, file name, contact name or poll question of an attachment, when it has one. */
+    val detail: String? = null,
 ) {
     val id: String get() = "$sender|$time|${text.hashCode()}"
+
+    /** Has words to read: text, or an attachment with a caption. */
+    val readable: Boolean get() = kind == MessageKind.TEXT || detail != null
 }
 
 /** The readable parts of a notification posted by another app, taken from its extras. */
@@ -51,6 +58,9 @@ data class NotificationBatch(
 ) {
     val isConversation: Boolean get() = messages.isNotEmpty()
 
+    /** Every new message is an attachment without a caption, so there's nothing to read but who sent them. */
+    val nothingToRead: Boolean get() = isConversation && messages.none { it.readable }
+
     /** "Mom" or "Family" for chats; the notification's title otherwise. */
     val heading: String
         get() = when {
@@ -75,13 +85,16 @@ data class NotificationBatch(
 
     fun spokenParagraphs(): List<String> {
         val out = mutableListOf<String>()
-        if (isConversation) {
+        if (nothingToRead) {
+            out += attachmentAnnouncement()
+        } else if (isConversation) {
             val count = if (messages.size > 1) ", ${messages.size} messages" else ""
             out += sentence("$appName. $heading$count")
             var lastSender: String? = null
             messages.forEach { m ->
                 // In group chats, say who is speaking whenever it changes.
-                out += if (isGroup && m.sender != null && m.sender != lastSender) "${m.sender}: ${m.text}" else m.text
+                val text = MessageKinds.spoken(m)
+                out += if (isGroup && m.sender != null && m.sender != lastSender) "${m.sender}: $text" else text
                 lastSender = m.sender
             }
         } else {
@@ -92,6 +105,25 @@ data class NotificationBatch(
             if (!b.isNullOrEmpty()) out += b.split(Regex("\n\\s*\n")).map { it.trim() }.filter { it.isNotEmpty() }
         }
         return out
+    }
+
+    /**
+     * "WhatsApp. New voice message from Tim Jones.", "WhatsApp. 3 new photos in Family." or
+     * "WhatsApp. New messages from Tim Jones: 2 photos and a sticker."
+     */
+    private fun attachmentAnnouncement(): String {
+        val from = messages.mapNotNull { it.sender }.distinct().singleOrNull()?.let { " from $it" }.orEmpty()
+        val where = if (isGroup) (conversationTitle ?: title)?.let { " in $it" }.orEmpty() else ""
+        val kinds = messages.groupingBy { it.kind }.eachCount()
+        val what = when {
+            kinds.size > 1 -> {
+                val parts = kinds.map { (kind, n) -> MessageKinds.count(n, kind) }
+                return "$appName. New messages$from$where: ${parts.dropLast(1).joinToString(", ")} and ${parts.last()}."
+            }
+            messages.size == 1 -> "New ${messages.single().kind.label}"
+            else -> "${messages.size} new ${messages.first().kind.plural}"
+        }
+        return "$appName. $what$from$where."
     }
 
     private fun sentence(s: String) = if (s.endsWith('.') || s.endsWith('!') || s.endsWith('?')) s else "$s."
@@ -126,6 +158,7 @@ class NotificationBatcher(private val maxSeen: Int = 1000) {
         } ?: 0
         val fresh = n.messages.drop(overlap)
             .filter { it.text.isNotBlank() && it.sender != null && (n.selfName == null || it.sender != n.selfName) }
+            .filter { it.kind != MessageKind.DELETED }
             .filter { markSeen(it.id) }
         n.messages.take(overlap).forEach { markSeen(it.id) }
         if (fresh.isEmpty()) return null
