@@ -391,6 +391,7 @@ private fun ReaderScreenBody(
     // The top bar's tallest height, so it doesn't shrink while the status bar comes back.
     var topHeight by remember { mutableStateOf(0) }
     var bottomHeight by remember { mutableStateOf(0) }
+    val barsVisible = rememberUpdatedState(showChrome)
 
     Box(
         Modifier
@@ -403,6 +404,9 @@ private fun ReaderScreenBody(
                 if (!readerMode) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                    // Taps on the bars go to their buttons.
+                    val y = down.position.y
+                    if (barsVisible.value && (y < topHeight || y > size.height - bottomHeight)) return@awaitEachGesture
                     val up = waitForUpOrCancellation(pass = PointerEventPass.Initial) ?: return@awaitEachGesture
                     val moved = (up.position - down.position).getDistance()
                     if (moved < viewConfiguration.touchSlop && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
