@@ -13,8 +13,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** A web import: the article plus every address it can be found under again. */
-class WebImport(val imported: Imported, val urlKeys: List<String>)
+/**
+ * A web import: the article plus every address it can be found under again, and the site icon
+ * links the page declared (best first), if it was read from HTML.
+ */
+class WebImport(val imported: Imported, val urlKeys: List<String>, val iconUrls: List<String> = emptyList())
 
 /**
  * Imports a web page as well as possible: site APIs where they're better (Wikipedia, Reddit,
@@ -40,6 +43,9 @@ class WebImporter(
     ): WebImport {
         val url = UrlNormalizer.normalize(rawUrl)
         val keys = linkedSetOf(UrlNormalizer.key(url))
+        // A share's subject is sometimes just the link; the page title or the address's words read better.
+        @Suppress("NAME_SHADOWING")
+        val titleHint = titleHint?.takeUnless { WebArticleExtractor.looksLikeUrl(it) }
 
         SiteHandlers.find(url)?.let { (handler, api) ->
             onStage(STAGE_LOADING)
@@ -93,7 +99,8 @@ class WebImporter(
         if (document.isEmpty || article.quality.wordCount < MIN_WORDS) throw ImportException(NO_TEXT)
 
         document = followPages(document, article, options, onStage)
-        return done(document, keys, article.canonicalUrl, page.finalUrl)
+        val icons = runCatching { SiteIconLinks.find(page.text(), page.finalUrl) }.getOrDefault(emptyList())
+        return done(document, keys, article.canonicalUrl, page.finalUrl, icons)
     }
 
     private suspend fun extract(
@@ -173,10 +180,16 @@ class WebImporter(
     private fun withPending(article: WebArticle, later: List<PendingTable>) =
         article.copy(document = article.document.copy(pendingTables = later))
 
-    private fun done(document: Document, keys: MutableSet<String>, canonical: String?, url: String): WebImport {
+    private fun done(
+        document: Document,
+        keys: MutableSet<String>,
+        canonical: String?,
+        url: String,
+        icons: List<String> = emptyList(),
+    ): WebImport {
         canonical?.let { keys += UrlNormalizer.key(it) }
         val source = canonical ?: document.url ?: url
-        return WebImport(Imported(document.copy(url = source), source, Importer.KIND_WEB), keys.toList())
+        return WebImport(Imported(document.copy(url = source), source, Importer.KIND_WEB), keys.toList(), icons)
     }
 
     companion object {

@@ -23,4 +23,19 @@ object ListeningTime {
         val rest = total % 60
         return if (rest == 0) "$h hr" else "$h hr $rest min"
     }
+
+    /** Like [label], but "< 1 min" for short items, to fit library rows. */
+    fun shortLabel(words: Int, speed: Float = 1f): String =
+        if (minutes(words, speed) < 1) "< 1 min" else label(words, speed)
+
+    /**
+     * Time left for a library row: "2 min (8 min total)" partway through, otherwise the total.
+     * [progress] is the current sentence index out of [segmentCount].
+     */
+    fun remainingLabel(words: Int, progress: Int, segmentCount: Int, speed: Float = 1f): String {
+        val total = shortLabel(words, speed)
+        if (progress <= 0 || segmentCount <= 0) return total
+        val left = (words * (1 - progress.toDouble() / segmentCount)).roundToInt().coerceAtLeast(0)
+        return "${shortLabel(left, speed)} ($total total)"
+    }
 }

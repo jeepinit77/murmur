@@ -6,15 +6,15 @@ Status: **Done** (on a branch, not released), **In progress**, **Planned**, **Id
 
 ## In progress
 
-### Smart web import — In progress (`smart-web-import` branch)
+### Smart web import — In progress
 - Site handlers for common news sites
 - Reading tables aloud, with optional on-device summaries (play build)
 - Markdown and HTML file import
-- Remaining: test on common news sites, then merge to `main`
+- Remaining: test on common news sites
 
 ## Sharing
 
-### Ask before resuming a saved page — Done (`smart-web-import` branch)
+### Ask before resuming a saved page — Done
 When a shared web page is already in the library, ask what to do instead of always resuming the saved copy. Starting partway through an article you forgot you'd started can be confusing.
 - A popup with two buttons and a checkbox:
   - **Resume**: continue the saved copy from where you left off
@@ -96,6 +96,24 @@ Tapping the Speed button in the media notification opens a speed slider instead 
   - Media3 notification buttons send a command to the playback service rather than opening a screen, and Android limits starting screens from the background. The button may need a custom notification layout or a different way to open the dialog.
   - On the lock screen the dialog would need the phone unlocked first. Keeping the current stepping there may be simpler.
 
+## Voices
+
+### Remove the Google voices setting — Planned
+Remove the **Google voices** switch from Settings ([SettingsScreen.kt](app/src/main/java/app/murmur/ui/screens/SettingsScreen.kt)), so Google voices appear on the Voice screen without turning them on first (play build, on phones that support them).
+- Today they're opt-in (`requiresOptIn` in [VoiceSource.kt](app/src/main/java/app/murmur/voice/VoiceSource.kt), `googleVoices` in [Settings.kt](app/src/main/java/app/murmur/settings/Settings.kt)), and the voice list only loads after the switch is turned on. Without the switch, the list loads at startup, so check that this doesn't slow down opening the app.
+- On phones where Google voices aren't available, nothing should appear, and no error should be shown.
+- The switch's note that every Google voice can sound the same on some phones goes away with it. To decide: whether to keep that note somewhere, such as on the Voice screen.
+- Remove the saved setting and the opt-in code once nothing uses them.
+
+### Stop or switch voice previews — Planned
+Control voice previews on the Voice screen while one is playing.
+- Today, tapping Play on a voice shows a spinner on that voice until the sample ends, and every other Play button is disabled meanwhile ([VoicesScreen.kt](app/src/main/java/app/murmur/ui/screens/VoicesScreen.kt)). There's no way to stop a sample early or try another voice without waiting.
+- **Stop**: while a sample plays, its Play button becomes a Stop button. Tapping it stops the sample right away.
+- **Switch**: Play stays enabled on the other voices. Tapping one stops the current sample and starts the new one.
+- Show a spinner only while the sample is being prepared, then Stop once it's playing.
+- Stop the sample when leaving the Voice screen.
+- To check: stopping Google voices mid-sentence, since Google's speech app plays them rather than Murmur.
+
 ## Importing
 
 ### Word documents (.docx) — Planned
@@ -119,16 +137,30 @@ Mark items in the library as done by swiping them, or from the item's menu.
 
 ## Appearance
 
-### Theme settings — Planned
-Choose how the app looks instead of always following the system.
-- Today the app follows the system's light or dark mode, and on Android 12+ always uses colors from the wallpaper. On older phones it uses Murmur's own blue and gold. There are no settings for any of this ([Theme.kt](app/src/main/java/app/murmur/ui/Theme.kt)).
-- A new **Appearance** section in Settings:
+### Redesign, phase 1: theme and library — Done (`redesign-phase-1` branch)
+- **Theme settings** at the top of Settings ([ui/theme](app/src/main/java/app/murmur/ui/theme)):
   - **Theme**: System default, Light, Dark
-  - **Use wallpaper colors** (Android 12+, on by default): turn off to use Murmur's own colors
-  - **Black background in dark theme**: pure black instead of dark gray, which saves battery on OLED screens
+  - **Color**: Violet (default), Blue, Teal, Green, Orange, Rose, and Wallpaper on Android 12+
+  - **Black background**: pure black instead of dark gray in the dark theme
+- Rounder shapes and heavier headings across the app
+- Library:
+  - Murmur mark in the top bar
+  - **All / Reading / Unread / Done** filter chips. An item is Done when it's listened to the end, or from **Mark as done** in its More options menu (**Mark as unread** undoes it)
+  - Rows show the site's icon (downloaded once per site and kept on the phone) or a tile for the kind of item, time left and total ("2 min (8 min total)"), and a progress bar
+  - The item being read is highlighted, with moving bars while it plays
+  - Titles that are only a web address show the words from the address instead
+  - Round + button; it shows "Add" while the library is empty
+- Mini player: a floating card with the item's icon, progress bar, Play/Pause and Next sentence
+- Figtree (OFL) bundled for the interface, so it doesn't depend on the phone's font. Article text keeps the phone's font.
+
+### Redesign, phase 2 — Planned
+Bring the rest of the app in line with the library.
+- Reader: article header, paragraph highlight colors
+- Now Playing: larger artwork tile, rounded slider, chip row
+- Settings and Voices list styling, dialogs, and the popups shown over other apps (such as "Already in your library")
 - To decide:
   - Reader-only color themes, such as sepia, separate from the app theme
-  - Whether text size and font (listed under Ideas) belong here too
+  - Whether text size and font (listed under Ideas) belong in Settings too
 
 ## Search
 

@@ -102,6 +102,31 @@ import androidx.compose.ui.text.input.ImeAction
 import app.murmur.library.LibraryStore
 import app.murmur.library.SearchHit
 import app.murmur.text.Snippet
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.murmur.text.WebArticleExtractor
+import app.murmur.ui.library.DocIcon
+import app.murmur.ui.library.Equalizer
+import app.murmur.ui.library.MurmurMark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -121,6 +146,9 @@ fun LibraryScreen(
     val docs by c.library.docs.collectAsStateWithLifecycle()
     val progress by c.library.progress.collectAsStateWithLifecycle()
     val state by c.reader.state.collectAsStateWithLifecycle()
+    val playingContent by c.reader.content.collectAsStateWithLifecycle()
+    val rewindSeconds by c.settings.rewindSeconds.collectAsStateWithLifecycle()
+    var playerExpanded by rememberSaveable { mutableStateOf(false) }
     val installed by c.voices.installed.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var addMenu by remember { mutableStateOf(false) }
@@ -135,6 +163,9 @@ fun LibraryScreen(
     var fullText by rememberSaveable { mutableStateOf(true) }
     var hits by remember { mutableStateOf<List<SearchHit>?>(null) }
     val notificationReading by c.settings.notificationReading.collectAsStateWithLifecycle()
+    val finished by c.library.finished.collectAsStateWithLifecycle()
+    var filter by rememberSaveable { mutableStateOf(LibraryFilter.ALL) }
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     var notificationTip by remember { mutableStateOf(!c.settings.notificationTipDismissed) }
 
     LaunchedEffect(searching, query, fullText, docs) {
@@ -188,6 +219,7 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             if (searching) {
                 SearchTopBar(
@@ -198,7 +230,14 @@ fun LibraryScreen(
                 )
             } else {
                 TopAppBar(
-                    title = { Text("Murmur") },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MurmurMark()
+                            Spacer(Modifier.width(12.dp))
+                            Text("Murmur", style = MaterialTheme.typography.headlineSmall)
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
                     actions = {
                         if (docs.isNotEmpty()) IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Search") }
                         IconButton(onClick = onVoices) { Icon(Icons.Default.RecordVoiceOver, "Voices") }
@@ -211,10 +250,14 @@ fun LibraryScreen(
             if (searching) return@Scaffold // no Add button while searching
             // One sized child: Scaffold drops zero-size children of this slot, which hid the menu.
             Box {
+                // The label helps while the library is empty; afterwards the + is enough.
                 ExtendedFloatingActionButton(
                     onClick = { addMenu = true },
-                    icon = { Icon(Icons.Default.Add, null) },
+                    icon = { Icon(Icons.Default.Add, if (docs.isEmpty()) null else "Add") },
                     text = { Text("Add") },
+                    expanded = docs.isEmpty(),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
                 DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                     DropdownMenuItem(
@@ -236,7 +279,21 @@ fun LibraryScreen(
             }
         },
         bottomBar = {
-            if (state.docId != null) MiniPlayer(state, c.reader, onClick = onNowPlaying)
+            if (state.docId != null) {
+                val meta = docs.firstOrNull { it.id == state.docId }
+                NowPlayingBar(
+                    state = state,
+                    content = playingContent,
+                    reader = c.reader,
+                    rewindSeconds = rewindSeconds,
+                    expanded = playerExpanded,
+                    onExpandedChange = { playerExpanded = it },
+                    onVoices = onVoices,
+                    onOpen = onNowPlaying,
+                    source = meta?.source,
+                    kind = meta?.kind,
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -284,6 +341,7 @@ fun LibraryScreen(
                     fullText = fullText,
                     onFullTextChange = { fullText = it },
                     progress = progress,
+                    finished = finished,
                     speed = speed,
                     onOpen = { hit ->
                         when {
@@ -296,12 +354,32 @@ fun LibraryScreen(
             } else if (docs.isEmpty()) {
                 EmptyLibrary()
             } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
-                    items(docs, key = { it.id }) { doc ->
+                FilterChips(filter, onChange = { filter = it })
+                val shown = docs.filter { filter.matches(it, progress[it.id] ?: 0, it.id in finished) }
+                if (shown.isEmpty()) {
+                    Text(
+                        filter.emptyText, style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    )
+                }
+                LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp)) {
+                    itemsIndexed(shown, key = { _, doc -> doc.id }) { index, doc ->
+                        val nowPlaying = state.docId == doc.id
+                        // Inset dividers between rows, left out next to the highlighted row.
+                        if (index > 0 && !nowPlaying && shown[index - 1].id != state.docId) {
+                            HorizontalDivider(
+                                Modifier.padding(start = 84.dp, end = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                            )
+                        }
                         DocRow(
                             doc = doc,
                             progress = progress[doc.id] ?: 0,
                             speed = speed,
+                            finished = doc.id in finished,
+                            nowPlaying = nowPlaying,
+                            playing = nowPlaying && state.playWhenReady && !state.ended,
                             onClick = {
                                 if (doc.status == DocStatus.READY) {
                                     onOpen(doc.id)
@@ -319,9 +397,14 @@ fun LibraryScreen(
                             },
                             onOpenOriginal = { openInBrowser(context, doc.source) },
                             onSignIn = { context.startActivity(SiteSignInActivity.intent(context, doc.source, doc.id)) },
+                            onSetFinished = { done -> c.library.setFinished(doc.id, done) },
                             onDelete = {
                                 if (state.docId == doc.id) c.reader.close()
                                 c.library.delete(doc.id)
+                                val site = c.siteIcons.key(doc.source)
+                                if (site != null && docs.none { it.id != doc.id && c.siteIcons.key(it.source) == site }) {
+                                    c.siteIcons.remove(doc.source)
+                                }
                             },
                         )
                     }
@@ -359,6 +442,7 @@ private fun SearchResults(
     fullText: Boolean,
     onFullTextChange: (Boolean) -> Unit,
     progress: Map<String, Int>,
+    finished: Set<String>,
     speed: Float,
     onOpen: (SearchHit) -> Unit,
 ) {
@@ -379,6 +463,8 @@ private fun SearchResults(
                     doc = hit.meta,
                     progress = progress[hit.meta.id] ?: 0,
                     speed = speed,
+                    finished = hit.meta.id in finished,
+                    showDate = true,
                     onClick = { onOpen(hit) },
                     snippet = hit.snippet,
                     matchCount = hit.count,
@@ -431,6 +517,24 @@ fun SearchTopBar(
 }
 
 @Composable
+private fun FilterChips(selected: LibraryFilter, onChange: (LibraryFilter) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(LibraryFilter.entries) { f ->
+            FilterChip(
+                selected = selected == f,
+                onClick = { onChange(f) },
+                label = { Text(f.label) },
+                leadingIcon = { Icon(f.icon, null, Modifier.size(FilterChipDefaults.IconSize)) },
+                shape = CircleShape,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SnippetText(snippet: Snippet, matchCount: Int) {
     val mark = MaterialTheme.colorScheme.tertiaryContainer
     val onMark = MaterialTheme.colorScheme.onTertiaryContainer
@@ -462,78 +566,137 @@ private fun EmptyLibrary() {
     }
 }
 
+/** How the library list is narrowed down by the chips under the top bar. */
+private enum class LibraryFilter(val label: String) {
+    ALL("All"), READING("Reading"), UNREAD("Unread"), DONE("Done");
+
+    val icon: ImageVector
+        get() = when (this) {
+            ALL -> Icons.AutoMirrored.Filled.List
+            READING -> Icons.Default.PlayCircleOutline
+            UNREAD -> Icons.Default.RadioButtonUnchecked
+            DONE -> Icons.Default.Check
+        }
+
+    fun matches(doc: DocMeta, progress: Int, finished: Boolean): Boolean = when (this) {
+        ALL -> true
+        DONE -> finished
+        READING -> !finished && progress > 0
+        UNREAD -> !finished && progress <= 0
+    }
+
+    val emptyText: String
+        get() = when (this) {
+            ALL -> "Nothing here yet"
+            READING -> "Nothing in progress"
+            UNREAD -> "Nothing unread"
+            DONE -> "Nothing marked as done"
+        }
+}
+
 @Composable
 private fun DocRow(
     doc: DocMeta,
     progress: Int,
     speed: Float,
     onClick: () -> Unit,
+    finished: Boolean = false,
+    /** The item loaded in the player; [playing] says whether it's being read right now. */
+    nowPlaying: Boolean = false,
+    playing: Boolean = false,
+    showDate: Boolean = false,
     onReload: () -> Unit = {},
     onOpenOriginal: () -> Unit = {},
     onSignIn: () -> Unit = {},
+    onSetFinished: (Boolean) -> Unit = {},
     /** Null hides the More options menu, as in search results. */
     onDelete: (() -> Unit)? = null,
     snippet: Snippet? = null,
     matchCount: Int = 0,
 ) {
     var menu by remember { mutableStateOf(false) }
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = {
-            Icon(
-                when {
-                    doc.status == DocStatus.PENDING -> Icons.Default.CloudOff
-                    doc.status == DocStatus.FAILED -> Icons.Default.ErrorOutline
-                    doc.kind == Importer.KIND_PDF -> Icons.Default.PictureAsPdf
-                    doc.kind == Importer.KIND_EPUB -> Icons.Default.MenuBook
-                    doc.kind == Importer.KIND_WEB -> Icons.Default.Article
-                    else -> Icons.Default.ShortText
-                },
-                null,
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(if (nowPlaying) colors.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DocIcon(doc.source, doc.kind, doc.status)
+        Column(Modifier.weight(1f).padding(start = 16.dp, end = 8.dp)) {
+            Text(
+                WebArticleExtractor.displayTitle(doc.title, doc.source),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
-        },
-        headlineContent = { Text(doc.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Column {
-                when (doc.status) {
-                    DocStatus.PENDING -> Text(
-                        listOfNotNull(sourceLabel(doc.source), "Waiting for network").joinToString(" · "),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    DocStatus.FAILED -> Text(
-                        (doc.error ?: "Couldn't import") + " · Tap to try again",
-                        color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
-                    DocStatus.READY -> Text(
-                        listOfNotNull(
-                            doc.author,
-                            sourceLabel(doc.source),
-                            doc.wordCount.takeIf { it > 0 }?.let { ListeningTime.label(it, speed) },
-                            DateUtils.getRelativeTimeSpanString(doc.addedAt).toString(),
-                        ).joinToString(" · "),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                snippet?.let { SnippetText(it, matchCount) }
-                if (doc.incomplete && doc.status == DocStatus.READY) {
-                    Text(
-                        "May be incomplete", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                if (doc.segmentCount > 0 && progress > 0) {
-                    LinearProgressIndicator(
-                        progress = { progress.toFloat() / doc.segmentCount },
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
-                }
+            when (doc.status) {
+                DocStatus.PENDING -> Text(
+                    listOfNotNull(sourceLabel(doc.source), "Waiting for network").joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                DocStatus.FAILED -> Text(
+                    (doc.error ?: "Couldn't import") + " · Tap to try again",
+                    style = MaterialTheme.typography.bodyMedium, color = colors.error,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                DocStatus.READY -> Text(
+                    listOfNotNull(
+                        doc.author,
+                        sourceLabel(doc.source),
+                        when {
+                            finished -> "Done"
+                            doc.wordCount > 0 -> ListeningTime.remainingLabel(doc.wordCount, progress, doc.segmentCount, speed)
+                            else -> null
+                        },
+                        if (showDate) DateUtils.getRelativeTimeSpanString(doc.addedAt).toString() else null,
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
-        },
-        trailingContent = if (onDelete == null) null else {
-            {
-            Row {
+            snippet?.let { SnippetText(it, matchCount) }
+            if (doc.incomplete && doc.status == DocStatus.READY) {
+                Text(
+                    "May be incomplete", style = MaterialTheme.typography.labelMedium,
+                    color = colors.tertiary, modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            if (doc.status == DocStatus.READY && doc.segmentCount > 0) {
+                val fraction = if (finished) 1f else (progress.toFloat() / doc.segmentCount).coerceIn(0f, 1f)
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(4.dp),
+                    color = colors.primary,
+                    trackColor = colors.surfaceContainerHighest,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+            }
+        }
+        if (nowPlaying) {
+            Equalizer(
+                playing = playing,
+                modifier = Modifier.padding(horizontal = 4.dp)
+                    .semantics { contentDescription = if (playing) "Playing" else "Paused" },
+            )
+        }
+        if (onDelete != null) {
+            Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More options") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (doc.status == DocStatus.READY) {
+                        if (finished) {
+                            DropdownMenuItem(text = { Text("Mark as unread") }, onClick = { menu = false; onSetFinished(false) })
+                        } else {
+                            DropdownMenuItem(text = { Text("Mark as done") }, onClick = { menu = false; onSetFinished(true) })
+                        }
+                    }
                     if (doc.isWeb && doc.status == DocStatus.READY) {
                         DropdownMenuItem(text = { Text("Reload") }, onClick = { menu = false; onReload() })
                     }
@@ -544,9 +707,8 @@ private fun DocRow(
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
                 }
             }
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable

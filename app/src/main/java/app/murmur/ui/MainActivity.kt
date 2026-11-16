@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import app.murmur.container
 import app.murmur.playback.PlaybackService
 import app.murmur.ui.screens.LibraryScreen
+import app.murmur.ui.theme.MurmurTheme
 import app.murmur.ui.screens.NotificationReadingScreen
 import app.murmur.ui.screens.ReaderScreen
 import app.murmur.ui.screens.SettingsScreen
@@ -149,7 +150,7 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         intent.getStringExtra(EXTRA_ROUTE)?.let { pendingRoute.value = it }
-        if (intent.getBooleanExtra(EXTRA_SHOW_PLAYER, false)) container.playerCardRequest.value = true
+        if (intent.getBooleanExtra(EXTRA_SHOW_PLAYER, false)) container.playerExpandRequest.value = true
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let { importAndPlay(it, intent.type) }
     }
 
@@ -169,7 +170,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_ROUTE = "route"
-        /** Opened from the playback notification: show the reader's player card. */
+        /** Opened from the playback notification: show the player expanded. */
         const val EXTRA_SHOW_PLAYER = "show_player"
         const val ROUTE_LIBRARY = "library"
         const val ROUTE_READER = "reader"
