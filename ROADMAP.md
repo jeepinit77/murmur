@@ -61,6 +61,7 @@ Settings → Notifications → Notification reading. Off by default; needs notif
 - Playing pauses what's being read, reads the notification, then resumes at the same sentence. Notification text is kept in memory only and never saved to the library.
 - Auto-play (off by default), set per app. Each app has its own conditions: only with headphones or Bluetooth, respect Do Not Disturb, and a Screen choice (on, off, any time).
 - Murmur's notifications use normal importance, so they appear with other notifications rather than under Silent, but without their own sound or vibration.
+- Attachments in chats (voice messages, photos, videos, GIFs, stickers, documents, locations, contacts, polls) are recognized from WhatsApp's emoji labels or the attached file's type. Within a conversation they're named ("Voice message, 12 seconds.", "Photo: At the beach") instead of reading the emoji. A chat with only attachments and no captions gets no notification unless the app has Auto-play on; then it's announced ("WhatsApp. New voice message from Tim Jones."). Deleted messages are skipped.
 - A one-time card on the home screen suggests it once the library has items.
 - To check: whether Android allows auto-play to start the playback service from the background (there's a fallback that reads in place), and how WhatsApp's notifications look in practice.
 
@@ -78,7 +79,7 @@ Choose how web addresses written in the text are read.
 Switch how the open article handles tables while listening, without changing the default in Settings.
 - **Tables**: Skip, Read row by row, Summarize with AI (when the phone supports it)
 - **Code blocks**: Skip, Say "A code block appears here.", Read line by line (same options as Settings)
-- In the reader's More options menu, or as a control on the player card. Only shown when the article has tables or code blocks.
+- In the reader's More options menu, or as a control in the expanded player. Only shown when the article has tables or code blocks.
 - The choice is saved for that article. Settings stays the default for new imports.
 - Today these modes are applied when the article is imported, and the original page isn't kept. Changing them means re-extracting the text, so this needs one of:
   - keeping the original HTML for each document, so it can be re-extracted offline, or
@@ -150,14 +151,22 @@ Mark items in the library as done by swiping them, or from the item's menu.
   - The item being read is highlighted, with moving bars while it plays
   - Titles that are only a web address show the words from the address instead
   - Round + button; it shows "Add" while the library is empty
-- Mini player: a floating card with the item's icon, progress bar, Play/Pause and Next sentence
+- One player, docked at the bottom of the library and the reader (replacing the reader's player card and bar and the library's mini player):
+  - Collapsed by default: the item's icon, title, chapter and time left, Rewind, Play/Pause and a progress line
+  - The chevron, a swipe up or tapping the title in the reader expands it: chapter skipping around the chapter name, a seek bar with sentence count and time left, Rewind and Forward by the Rewind setting's seconds, previous and next sentence, and Speed, Sleep and Voice buttons
+  - Opens expanded when Murmur is opened from the playback notification; Back or a swipe down collapses it
 - Figtree (OFL) bundled for the interface, so it doesn't depend on the phone's font. Article text keeps the phone's font.
 
-### Redesign, phase 2 — Planned
+### Redesign, phase 2 — In progress (`redesign-phase-2` branch)
 Bring the rest of the app in line with the library.
-- Reader: article header, paragraph highlight colors
-- Now Playing: larger artwork tile, rounded slider, chip row
-- Settings and Voices list styling, dialogs, and the popups shown over other apps (such as "Already in your library")
+- Done:
+  - Settings and Notification reading: options grouped in rounded cards under section titles, sliders with their value beside the title, rows instead of outlined buttons for actions
+  - Voice and Download voices: segmented card lists; the selected voice is highlighted with a check badge, other voices show their initial
+  - Reader: a header with the site's icon and name, the title, author, date and listening time. The top bar shows the title only after the header scrolls away, and a first paragraph that repeats the title isn't shown twice. The sentence being read gets rounded bars per line, without changing the font weight
+  - Dialogs: Paste text and Web page link show their Add menu icon, open the keyboard right away, and use the web address keyboard for links. Clear and Delete use the error color
+  - The popup shown over other apps when sharing a saved page uses the app's theme and color instead of fixed navy and gold
+- Planned:
+  - Further player updates, such as a larger artwork tile in the expanded player
 - To decide:
   - Reader-only color themes, such as sepia, separate from the app theme
   - Whether text size and font (listed under Ideas) belong in Settings too
