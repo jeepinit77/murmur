@@ -41,6 +41,7 @@ import app.murmur.web.TableMode
 import kotlinx.coroutines.delay
 import android.widget.Toast
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
@@ -89,11 +90,14 @@ fun SettingsScreen(onBack: () -> Unit, onNotificationReading: () -> Unit) {
             title = { Text("Clear website sign-ins?") },
             text = { Text("You'll be signed out of every site you signed in to in Murmur.") },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = {
                     confirmClear = false
                     SiteSignInActivity.clearSignIns()
                     Toast.makeText(context, "Website sign-ins cleared", Toast.LENGTH_SHORT).show()
-                }) { Text("Clear") }
+                    },
+                ) { Text("Clear") }
             },
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
         )

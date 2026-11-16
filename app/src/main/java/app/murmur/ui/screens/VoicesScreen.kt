@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -327,10 +328,13 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    sourceFor(c, d.voices.first()).delete(d.pkg)
-                    confirmDelete = null
-                }) { Text("Delete") }
+                TextButton(
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        sourceFor(c, d.voices.first()).delete(d.pkg)
+                        confirmDelete = null
+                    },
+                ) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )

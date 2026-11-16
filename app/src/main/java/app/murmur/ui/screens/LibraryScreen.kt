@@ -33,6 +33,9 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -416,6 +419,7 @@ fun LibraryScreen(
     when (dialog) {
         "text" -> TextInputDialog(
             title = "Paste text",
+            icon = Icons.Default.ShortText,
             initial = clipboardText(context),
             singleLine = false,
             onDismiss = { dialog = null },
@@ -423,6 +427,7 @@ fun LibraryScreen(
         )
         "url" -> TextInputDialog(
             title = "Web page link",
+            icon = Icons.Default.Link,
             initial = clipboardText(context)?.takeIf { it.startsWith("http") },
             singleLine = true,
             onDismiss = { dialog = null },
@@ -782,24 +787,34 @@ private fun clipboardText(context: Context): String? = runCatching {
 @Composable
 fun TextInputDialog(
     title: String,
+    icon: ImageVector,
     initial: String?,
     singleLine: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var value by remember { mutableStateOf(initial.orEmpty()) }
+    // The cursor goes at the end of any text taken from the clipboard.
+    var value by remember { mutableStateOf(TextFieldValue(initial.orEmpty(), TextRange(initial.orEmpty().length))) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { Icon(icon, contentDescription = null) },
         title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
                 singleLine = singleLine,
-                modifier = Modifier.fillMaxWidth().heightIn(min = if (singleLine) 0.dp else 160.dp, max = 360.dp),
+                keyboardOptions = if (singleLine) KeyboardOptions(keyboardType = KeyboardType.Uri) else KeyboardOptions.Default,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = if (singleLine) 0.dp else 160.dp, max = 360.dp)
+                    .focusRequester(focus),
             )
         },
-        confirmButton = { TextButton(enabled = value.isNotBlank(), onClick = { onConfirm(value) }) { Text("Read") } },
+        confirmButton = { TextButton(enabled = value.text.isNotBlank(), onClick = { onConfirm(value.text) }) { Text("Read") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

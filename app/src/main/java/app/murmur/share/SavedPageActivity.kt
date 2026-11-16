@@ -33,7 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -117,8 +117,7 @@ class SavedPageActivity : ComponentActivity() {
         onImportAgain: () -> Unit,
         onClose: () -> Unit,
     ) {
-        // Fixed brand colors rather than the dynamic scheme, which can be all gray on some phones.
-        val colors = if (isSystemInDarkTheme()) PopupColors.Dark else PopupColors.Light
+        val colors = PopupColors.from(MaterialTheme.colorScheme)
         Surface(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
@@ -283,7 +282,7 @@ class SavedPageActivity : ComponentActivity() {
         }
     }
 
-    /** The popup's colors, built from Murmur's navy and gold app icon. */
+    /** The popup's colors, from the app's theme and color settings. */
     private class PopupColors(
         val card: Color,
         val group: Color,
@@ -300,35 +299,20 @@ class SavedPageActivity : ComponentActivity() {
         val onGoldSoft: Color,
     ) {
         companion object {
-            val Light = PopupColors(
-                card = Color(0xFFFBFAF7),
-                group = Color(0xFFFFFFFF),
-                outline = Color(0xFFDCDFE8),
-                text = Color(0xFF1B2133),
-                secondaryText = Color(0xFF555C70),
-                closeButton = Color(0xFFECEDF1),
-                accent = Color(0xFF2E3A59),
-                onAccent = Color(0xFFFFFFFF),
-                accentSoft = Color(0xFFE6EBF7),
-                gold = Color(0xFFF6D97A),
-                onGold = Color(0xFF2E3A59),
-                goldSoft = Color(0xFFFBF0CC),
-                onGoldSoft = Color(0xFF6B5100),
-            )
-            val Dark = PopupColors(
-                card = Color(0xFF1B1D23),
-                group = Color(0xFF22252D),
-                outline = Color(0xFF353A47),
-                text = Color(0xFFEDEEF2),
-                secondaryText = Color(0xFFB3B8C6),
-                closeButton = Color(0xFF2C303A),
-                accent = Color(0xFFB8C4E8),
-                onAccent = Color(0xFF1A2440),
-                accentSoft = Color(0xFF2B3550),
-                gold = Color(0xFFF6D97A),
-                onGold = Color(0xFF2E3A59),
-                goldSoft = Color(0xFF3B3523),
-                onGoldSoft = Color(0xFFF6D97A),
+            fun from(scheme: ColorScheme) = PopupColors(
+                card = scheme.surfaceContainerHigh,
+                group = scheme.surfaceContainerLowest,
+                outline = scheme.outlineVariant,
+                text = scheme.onSurface,
+                secondaryText = scheme.onSurfaceVariant,
+                closeButton = scheme.surfaceContainerHighest,
+                accent = scheme.primary,
+                onAccent = scheme.onPrimary,
+                accentSoft = scheme.primaryContainer.copy(alpha = 0.45f),
+                gold = scheme.tertiaryContainer,
+                onGold = scheme.onTertiaryContainer,
+                goldSoft = scheme.tertiaryContainer,
+                onGoldSoft = scheme.onTertiaryContainer,
             )
         }
     }
