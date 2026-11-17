@@ -17,7 +17,15 @@ enum class ShareMode { REPLACE, QUEUE }
 enum class SavedPageMode { ASK, RESUME, IMPORT_AGAIN }
 
 /** Typeface for article text in the reader. */
-enum class ReaderFont(val label: String) { SANS_SERIF("Sans serif"), SERIF("Serif") }
+enum class ReaderFont(val label: String) {
+    SANS_SERIF("Sans serif"),
+    SERIF("Serif"),
+    CONDENSED("Condensed"),
+    MONOSPACE("Monospace"),
+}
+
+/** How article text lines up in the reader. */
+enum class ReaderAlignment(val label: String) { LEFT("Left"), JUSTIFIED("Justified") }
 
 /** Line height for article text in the reader, as a multiple of the text size. */
 enum class LineSpacing(val label: String, val multiplier: Float) {
@@ -30,9 +38,12 @@ enum class LineSpacing(val label: String, val multiplier: Float) {
 enum class ReadingColors(val label: String) {
     APP("Match app"),
     WHITE("White"),
+    GRAY("Gray"),
     SEPIA("Sepia"),
     DARK("Dark"),
     BLACK("Black"),
+    /** Red text on black, for reading at night. */
+    RED("Red"),
 }
 
 /** Side margins for article text in the reader. */
@@ -187,6 +198,13 @@ class Settings(context: Context) {
     fun setReaderMargins(m: ReaderMargins) {
         _readerMargins.value = m
         prefs.edit { putString(KEY_READER_MARGINS, m.name) }
+    }
+
+    private val _readerAlignment = MutableStateFlow(enumPref(KEY_READER_ALIGNMENT, ReaderAlignment.LEFT))
+    val readerAlignment: StateFlow<ReaderAlignment> = _readerAlignment.asStateFlow()
+    fun setReaderAlignment(a: ReaderAlignment) {
+        _readerAlignment.value = a
+        prefs.edit { putString(KEY_READER_ALIGNMENT, a.name) }
     }
 
     private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_ON, false))
@@ -364,6 +382,7 @@ class Settings(context: Context) {
         private const val KEY_KEEP_SCREEN_ON = "reader_keep_screen_on"
         private const val KEY_READING_COLORS = "reader_colors"
         private const val KEY_READER_MARGINS = "reader_margins"
+        private const val KEY_READER_ALIGNMENT = "reader_alignment"
         const val DEFAULT_TEXT_SIZE = 19
         const val MIN_TEXT_SIZE = 14
         const val MAX_TEXT_SIZE = 30

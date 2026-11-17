@@ -68,7 +68,21 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.container
 import app.murmur.settings.LineSpacing
+import app.murmur.settings.ReaderAlignment
 import app.murmur.settings.ReaderFont
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.FormatAlignJustify
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import app.murmur.settings.ReaderMargins
 import app.murmur.settings.ReadingColors
 import app.murmur.settings.Settings
@@ -84,14 +98,19 @@ internal fun rememberArticleStyles(): ArticleStyles {
     val font by settings.readerFont.collectAsStateWithLifecycle()
     val spacing by settings.lineSpacing.collectAsStateWithLifecycle()
     val margins by settings.readerMargins.collectAsStateWithLifecycle()
+    val alignment by settings.readerAlignment.collectAsStateWithLifecycle()
     // Article text keeps the phone's fonts; Figtree is for the interface.
-    val family = if (font == ReaderFont.SERIF) FontFamily.Serif else FontFamily.Default
+    val family = font.family()
     val headingSize = size * 1.2f
+    val justified = alignment == ReaderAlignment.JUSTIFIED
     return ArticleStyles(
         body = MaterialTheme.typography.bodyLarge.copy(
             fontFamily = family,
             fontSize = size.sp,
             lineHeight = (size * spacing.multiplier).sp,
+            textAlign = if (justified) TextAlign.Justify else TextAlign.Start,
+            // Hyphenation keeps justified lines from opening wide gaps between words.
+            hyphens = if (justified) Hyphens.Auto else Hyphens.None,
         ),
         heading = MaterialTheme.typography.titleLarge.copy(
             fontFamily = family,
@@ -100,6 +119,14 @@ internal fun rememberArticleStyles(): ArticleStyles {
         ),
         margin = margins.dp,
     )
+}
+
+/** The phone's typeface for each reader font choice. */
+internal fun ReaderFont.family(): FontFamily = when (this) {
+    ReaderFont.SANS_SERIF -> FontFamily.Default
+    ReaderFont.SERIF -> FontFamily.Serif
+    ReaderFont.CONDENSED -> FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL))
+    ReaderFont.MONOSPACE -> FontFamily.Monospace
 }
 
 /** Article styles outside reader mode, where the text settings don't apply. */
@@ -118,21 +145,29 @@ internal fun standardArticleStyles(): ArticleStyles {
 }
 
 /** Background, text and secondary text colors for a reading color choice; null for Match app. */
-private class Paper(val background: Color, val text: Color, val secondary: Color)
+private class Paper(val background: Color, val text: Color, val secondary: Color, val accent: Color? = null)
 
 private fun ReadingColors.paper(): Paper? = when (this) {
     ReadingColors.APP -> null
     ReadingColors.WHITE -> Paper(Color(0xFFFFFFFF), Color(0xFF1F1F1F), Color(0xFF5F6368))
+    ReadingColors.GRAY -> Paper(Color(0xFFE6E6E4), Color(0xFF262626), Color(0xFF5C5C5A))
     ReadingColors.SEPIA -> Paper(Color(0xFFF4ECD8), Color(0xFF4B3A2A), Color(0xFF7D6650))
     ReadingColors.DARK -> Paper(Color(0xFF242424), Color(0xFFE2E2E2), Color(0xFFA9A9A9))
     ReadingColors.BLACK -> Paper(Color(0xFF000000), Color(0xFFD6D6D6), Color(0xFF999999))
+    // Only red light, which is easier on the eyes in the dark. Highlights and controls stay red too.
+    ReadingColors.RED -> Paper(Color(0xFF000000), Color(0xFFD03A2E), Color(0xFF8E2A22), accent = Color(0xFFB0322A))
 }
 
 /** The app's colors with the background, surfaces and text swapped for [paper]. */
 private fun ColorScheme.onPaper(paper: Paper): ColorScheme {
     val bg = paper.background
-    fun tint(amount: Float) = lerp(bg, paper.text, amount)
+    // On a near-black page shadows don't show, so the bars and menus need a stronger tint to stand out.
+    val boost = if (bg.luminance() < 0.02f) 2.2f else 1f
+    fun tint(amount: Float) = lerp(bg, paper.text, amount * boost)
+    val primary = paper.accent ?: primary
     return copy(
+        primary = primary,
+        onPrimary = if (paper.accent != null) bg else onPrimary,
         background = bg,
         onBackground = paper.text,
         surface = bg,
@@ -143,7 +178,7 @@ private fun ColorScheme.onPaper(paper: Paper): ColorScheme {
         surfaceContainer = tint(0.05f),
         surfaceContainerHigh = tint(0.08f),
         surfaceContainerHighest = tint(0.11f),
-        outlineVariant = tint(0.18f),
+        outlineVariant = lerp(bg, paper.text, 0.18f),
         // The reading highlight: the accent color, faded into the page.
         primaryContainer = lerp(bg, primary, if (bg.luminance() > 0.5f) 0.22f else 0.35f),
         onPrimaryContainer = paper.text,
@@ -152,6 +187,9 @@ private fun ColorScheme.onPaper(paper: Paper): ColorScheme {
         onSecondaryContainer = paper.text,
     )
 }
+
+/** The app's colors before reader mode swaps them, for previewing Match app. */
+private val LocalAppColors = staticCompositionLocalOf<ColorScheme?> { null }
 
 /**
  * Reader mode's colors: the app theme, or White, Sepia, Dark or Black, with the status and
@@ -183,7 +221,11 @@ internal fun ReadingTheme(enabled: Boolean, content: @Composable () -> Unit) {
     }
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
         // Article text takes its color from here, not from the app's surfaces around the reader.
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+        CompositionLocalProvider(
+            LocalContentColor provides scheme.onBackground,
+            LocalAppColors provides base,
+            content = content,
+        )
     }
 }
 
@@ -196,6 +238,7 @@ internal fun ReaderTextControls() {
     val spacing by settings.lineSpacing.collectAsStateWithLifecycle()
     val margins by settings.readerMargins.collectAsStateWithLifecycle()
     val colors by settings.readingColors.collectAsStateWithLifecycle()
+    val alignment by settings.readerAlignment.collectAsStateWithLifecycle()
     val keepScreenOn by settings.keepScreenOn.collectAsStateWithLifecycle()
 
     ColorRow(colors, settings::setReadingColors)
@@ -203,10 +246,12 @@ internal fun ReaderTextControls() {
     SegmentedRow(
         "Font", ReaderFont.entries, font, { it.label }, settings::setReaderFont,
         // Each choice is shown in its own typeface.
-        labelFamily = { if (it == ReaderFont.SERIF) FontFamily.Serif else FontFamily.Default },
+        labelFamily = { it.family() },
+        stacked = true,
     )
     SegmentedRow("Line spacing", LineSpacing.entries, spacing, { it.label }, settings::setLineSpacing)
     SegmentedRow("Margins", ReaderMargins.entries, margins, { it.label }, settings::setReaderMargins)
+    SegmentedRow("Alignment", ReaderAlignment.entries, alignment, { it.label }, settings::setReaderAlignment)
     SwitchRow(
         title = "Keep screen on",
         description = "While reader mode is on",
@@ -221,9 +266,11 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
     val app = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text("Colors", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             ReadingColors.entries.forEach { choice ->
-                val paper = choice.paper() ?: Paper(app.background, app.onBackground, app.onSurfaceVariant)
                 val isSelected = choice == selected
                 Column(
                     Modifier
@@ -232,20 +279,7 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
                         .padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(paper.background)
-                            .border(
-                                if (isSelected) 3.dp else 1.dp,
-                                if (isSelected) app.primary else app.outlineVariant,
-                                CircleShape,
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Aa", color = paper.text, fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                    }
+                    ColorSwatch(choice, 44.dp, isSelected)
                     Text(
                         choice.label,
                         style = MaterialTheme.typography.labelMedium,
@@ -256,6 +290,28 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
                 }
             }
         }
+    }
+}
+
+/** A circle showing "Aa" in a reading color choice's text and background colors. */
+@Composable
+private fun ColorSwatch(choice: ReadingColors, size: Dp, selected: Boolean) {
+    val app = LocalAppColors.current ?: MaterialTheme.colorScheme
+    val paper = choice.paper() ?: Paper(app.background, app.onBackground, app.onSurfaceVariant)
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(paper.background)
+            .border(
+                if (selected) 3.dp else 1.dp,
+                if (selected) scheme.primary else scheme.outlineVariant,
+                CircleShape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("Aa", color = paper.text, fontWeight = FontWeight.Medium, fontSize = (size.value * 0.36f).sp)
     }
 }
 
@@ -295,22 +351,43 @@ private fun <T> SegmentedRow(
     label: (T) -> String,
     onSelect: (T) -> Unit,
     labelFamily: (T) -> FontFamily? = { null },
+    stacked: Boolean = false,
 ) {
+    if (stacked) {
+        // Title above, for choices that need the full width.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+            SegmentedChoices(Modifier.fillMaxWidth(), options, selected, label, onSelect, labelFamily)
+        }
+        return
+    }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(112.dp))
-        SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
-            options.forEachIndexed { i, option ->
-                SegmentedButton(
-                    selected = option == selected,
-                    onClick = { onSelect(option) },
-                    shape = SegmentedButtonDefaults.itemShape(i, options.size),
-                    // No check mark: the selected choice is filled, and the labels need the room.
-                    icon = {},
-                ) { Text(label(option), maxLines = 1, softWrap = false, fontFamily = labelFamily(option)) }
-            }
+        SegmentedChoices(Modifier.weight(1f), options, selected, label, onSelect, labelFamily)
+    }
+}
+
+@Composable
+private fun <T> SegmentedChoices(
+    modifier: Modifier,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    labelFamily: (T) -> FontFamily?,
+) {
+    SingleChoiceSegmentedButtonRow(modifier) {
+        options.forEachIndexed { i, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                // No check mark: the selected choice is filled, and the labels need the room.
+                icon = {},
+            ) { Text(label(option), maxLines = 1, softWrap = false, fontFamily = labelFamily(option)) }
         }
     }
 }
@@ -336,6 +413,7 @@ internal fun ReaderModeBar(
     val spacing by settings.lineSpacing.collectAsStateWithLifecycle()
     val margins by settings.readerMargins.collectAsStateWithLifecycle()
     val colors by settings.readingColors.collectAsStateWithLifecycle()
+    val alignment by settings.readerAlignment.collectAsStateWithLifecycle()
     var openMenu by remember { mutableStateOf<String?>(null) }
     val scheme = MaterialTheme.colorScheme
     val tonal = IconButtonDefaults.filledTonalIconButtonColors(
@@ -367,8 +445,7 @@ internal fun ReaderModeBar(
                 FilledTonalIconButton(onClick = { openMenu = "font" }, colors = tonal) { Icon(Icons.Default.TextFields, "Font") }
                 DropdownMenu(expanded = openMenu == "font", onDismissRequest = { openMenu = null }) {
                     ReaderFont.entries.forEach { f ->
-                        val family = if (f == ReaderFont.SERIF) FontFamily.Serif else FontFamily.Default
-                        ChoiceItem(f.label, f == font, fontFamily = family) { settings.setReaderFont(f) }
+                        ChoiceItem(f.label, f == font, fontFamily = f.family()) { settings.setReaderFont(f) }
                     }
                 }
             }
@@ -376,15 +453,8 @@ internal fun ReaderModeBar(
                 FilledTonalIconButton(onClick = { openMenu = "colors" }, colors = tonal) { Icon(Icons.Default.Palette, "Colors") }
                 DropdownMenu(expanded = openMenu == "colors", onDismissRequest = { openMenu = null }) {
                     ReadingColors.entries.forEach { choice ->
-                        val paper = choice.paper()
                         ChoiceItem(choice.label, choice == colors, leading = {
-                            Box(
-                                Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(paper?.background ?: scheme.background)
-                                    .border(1.dp, scheme.outline, CircleShape),
-                            )
+                            ColorSwatch(choice, 32.dp, selected = false)
                         }) { settings.setReadingColors(choice) }
                     }
                 }
@@ -394,11 +464,16 @@ internal fun ReaderModeBar(
                     Icon(Icons.Default.FormatLineSpacing, "Spacing")
                 }
                 DropdownMenu(expanded = openMenu == "spacing", onDismissRequest = { openMenu = null }) {
-                    MenuHeading("Line spacing")
-                    LineSpacing.entries.forEach { l -> ChoiceItem(l.label, l == spacing) { settings.setLineSpacing(l) } }
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    MenuHeading("Margins")
-                    ReaderMargins.entries.forEach { m -> ChoiceItem(m.label, m == margins) { settings.setReaderMargins(m) } }
+                    PictureChoices("Line spacing", LineSpacing.entries, spacing, { it.label }, settings::setLineSpacing) { l, color ->
+                        LineSpacingPicture(l, color)
+                    }
+                    PictureChoices("Margins", ReaderMargins.entries, margins, { it.label }, settings::setReaderMargins) { m, color ->
+                        MarginsPicture(m, color)
+                    }
+                    PictureChoices("Alignment", ReaderAlignment.entries, alignment, { it.label }, settings::setReaderAlignment) { a, color ->
+                        val icon = if (a == ReaderAlignment.LEFT) Icons.AutoMirrored.Filled.FormatAlignLeft else Icons.Default.FormatAlignJustify
+                        Icon(icon, null, tint = color)
+                    }
                 }
             }
 
@@ -435,4 +510,97 @@ private fun MenuHeading(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
     )
+}
+
+/** A row of choices shown as small pictures with labels, under a heading. The menu stays open. */
+@Composable
+private fun <T> PictureChoices(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    picture: @Composable (T, Color) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                val isSelected = option == selected
+                val content = if (isSelected) scheme.onSecondaryContainer else scheme.onSurface
+                Column(
+                    Modifier
+                        .width(76.dp)
+                        .clip(shape)
+                        .background(if (isSelected) scheme.secondaryContainer else Color.Transparent)
+                        .border(1.dp, if (isSelected) scheme.primary else scheme.outlineVariant, shape)
+                        .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(option) })
+                        .padding(top = 10.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { picture(option, content) }
+                    Text(
+                        label(option),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = content,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Four lines with the gap between them growing with the line spacing. */
+@Composable
+private fun LineSpacingPicture(spacing: LineSpacing, color: Color) {
+    val gap = when (spacing) {
+        LineSpacing.COMPACT -> 2.dp
+        LineSpacing.NORMAL -> 4.dp
+        LineSpacing.WIDE -> 6.dp
+    }
+    Canvas(Modifier.size(28.dp)) {
+        val stroke = 2.dp.toPx()
+        val step = stroke + gap.toPx()
+        var y = (size.height - (4 * stroke + 3 * gap.toPx())) / 2 + stroke / 2
+        repeat(4) {
+            drawLine(color, Offset(0f, y), Offset(size.width, y), stroke, cap = StrokeCap.Round)
+            y += step
+        }
+    }
+}
+
+/** A page with lines of text, set in from the edges by the margin. */
+@Composable
+private fun MarginsPicture(margins: ReaderMargins, color: Color) {
+    val inset = when (margins) {
+        ReaderMargins.NARROW -> 2.dp
+        ReaderMargins.NORMAL -> 4.5.dp
+        ReaderMargins.WIDE -> 7.dp
+    }
+    Canvas(Modifier.width(26.dp).height(32.dp)) {
+        val border = 1.5.dp.toPx()
+        drawRoundRect(
+            color,
+            topLeft = Offset(border / 2, border / 2),
+            size = Size(size.width - border, size.height - border),
+            cornerRadius = CornerRadius(3.dp.toPx()),
+            style = Stroke(border),
+        )
+        val x = border + inset.toPx()
+        var y = 7.dp.toPx()
+        repeat(5) {
+            drawLine(color, Offset(x, y), Offset(size.width - x, y), 1.5.dp.toPx(), cap = StrokeCap.Round)
+            y += 4.5.dp.toPx()
+        }
+    }
 }
