@@ -132,7 +132,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (mine.isEmpty()) {
                 item(key = "empty") {
-                    SettingsCard(Modifier.padding(16.dp)) {
+                    SettingsCard(Modifier.padding(SCREEN_PADDING)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Text("You haven't downloaded any voices yet.", style = MaterialTheme.typography.bodyLarge)
                             DownloadVoicesButton(onDownloads)
@@ -188,7 +188,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
 private fun GoogleVoicesSetting() {
     val c = LocalContext.current.container
     val on by c.settings.googleVoices.collectAsStateWithLifecycle()
-    SettingsCard(Modifier.padding(horizontal = 16.dp)) {
+    SettingsCard(Modifier.padding(horizontal = SCREEN_PADDING)) {
         SwitchRow(
             title = "Google voices",
             description = "Add voices from Google's Speech Recognition & Synthesis app to this list. " +

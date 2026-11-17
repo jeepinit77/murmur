@@ -142,8 +142,8 @@ fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+                .padding(start = SCREEN_PADDING, end = SCREEN_PADDING, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(SCREEN_PADDING),
         ) {
             when (page) {
                 SettingsPage.PLAYBACK -> PlaybackSettings()
@@ -172,6 +172,7 @@ private fun PlaybackSettings() {
             range = Settings.MIN_SPEED..Settings.MAX_SPEED,
             onChange = { c.reader.setSpeed((it * 20).roundToInt() / 20f) },
         )
+        SectionDivider(start = 14.dp)
         SliderRow(
             title = "Pause between paragraphs",
             value = "$pause ms",
@@ -179,12 +180,14 @@ private fun PlaybackSettings() {
             range = 0f..1500f,
             onChange = { c.settings.setParagraphPauseMs((it / 50).roundToInt() * 50) },
         )
+        SectionDivider(start = 14.dp)
         ChoiceRow(
             title = "Rewind button",
             choices = Settings.REWIND_CHOICES.map { Choice(it, "$it seconds") },
             selected = rewind,
             onSelect = c.settings::setRewindSeconds,
         )
+        SectionDivider(start = 14.dp)
         SwitchRow(
             title = "Loading and error sounds",
             description = "Play a quiet tone while audio is being prepared, and a short sound if reading can't start.",
@@ -211,6 +214,7 @@ private fun SharingSettings() {
             onSelect = c.settings::setShareMode,
         )
         if (shareMode == ShareMode.REPLACE) {
+            SectionDivider(start = 14.dp)
             SwitchRow(
                 title = "Keep playing while loading",
                 description = "Keep reading the current item until the shared page is ready, instead of stopping right away.",
@@ -218,6 +222,7 @@ private fun SharingSettings() {
                 onChange = c.settings::setKeepPlayingWhileLoading,
             )
         }
+        SectionDivider(start = 14.dp)
         ChoiceRow(
             title = "When sharing a saved page",
             choices = SavedPageMode.entries.map { mode ->
@@ -287,18 +292,21 @@ private fun ReadingSettings() {
             checked = headings,
             onChange = c.settings::setHeadingsAsChapters,
         )
+        SectionDivider(start = 14.dp)
         SwitchRow(
             title = "Read title and author first",
             description = "After the title, read the subtitle, author, site name and publish date.",
             checked = intro,
             onChange = c.settings::setSpokenIntro,
         )
+        SectionDivider(start = 14.dp)
         SwitchRow(
             title = "Read image captions",
             description = "Read figure captions and image descriptions.",
             checked = captions,
             onChange = c.settings::setReadCaptions,
         )
+        SectionDivider(start = 14.dp)
         ChoiceRow(
             title = "Code blocks",
             choices = listOf(
@@ -343,6 +351,7 @@ private fun ReadingSettings() {
         )
         if (tableAi != null) {
             if (tables == TableMode.SUMMARIZE && canSummarize) {
+                SectionDivider(start = 14.dp)
                 SwitchRow(
                     title = "Label summaries as AI",
                     description = "Read “Table summary by AI” before each summary.",
@@ -370,7 +379,7 @@ private fun AboutSettings() {
                 "respective authors, under their own licenses.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
 }

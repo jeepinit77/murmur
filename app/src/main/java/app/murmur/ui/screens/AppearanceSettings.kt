@@ -50,6 +50,7 @@ internal fun AppearanceSettings() {
         ThemeMode.entries.forEach { m ->
             RadioRow(m.label, mode == m) { settings.setThemeMode(m) }
         }
+        SectionDivider(start = 14.dp)
         SwitchRow(
             "Black background",
             "Use black instead of dark gray in the dark theme",

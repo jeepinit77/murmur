@@ -46,12 +46,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 
 /*
- * Building blocks for settings screens: settings sit in rounded cards, grouped under a title, as in
- * the phone's own Settings app. Rows have the same padding everywhere so the cards line up.
+ * Building blocks for settings screens: compact rows in rounded cards, each card with its small
+ * heading and note inside. Rows have the same padding everywhere so the cards line up.
  */
 
 /** Horizontal padding of every row inside a card. */
-private val ROW_PADDING = 16.dp
+private val ROW_PADDING = 14.dp
+
+/** Space around and between the cards on a settings screen. */
+internal val SCREEN_PADDING = 12.dp
 
 /**
  * A titled group of settings in one card. [note] explains the whole group, under its title.
@@ -66,24 +69,26 @@ internal fun SettingsGroup(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth()) {
-        if (title != null) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, bottom = 8.dp),
-            )
-        }
-        if (note != null) {
-            Text(
-                note,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, bottom = 8.dp),
-            )
-        }
         header?.invoke()
-        SettingsCard(content = content)
+        SettingsCard {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, top = 6.dp, bottom = 2.dp),
+                )
+            }
+            if (note != null) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, top = if (title == null) 6.dp else 0.dp, bottom = 4.dp),
+                )
+            }
+            content()
+        }
     }
 }
 
@@ -91,12 +96,12 @@ internal fun SettingsGroup(
 @Composable
 internal fun SettingsCard(
     modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.large,
+    shape: Shape = RoundedCornerShape(16.dp),
     color: Color = MaterialTheme.colorScheme.surfaceContainer,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier.fillMaxWidth(), shape = shape, color = color) {
-        Column(Modifier.padding(vertical = 6.dp), content = content)
+        Column(Modifier.padding(vertical = 4.dp), content = content)
     }
 }
 
@@ -120,8 +125,9 @@ internal fun segmentShape(index: Int, count: Int): Shape {
 internal fun SettingsSubheading(title: String) {
     Text(
         title,
-        style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, top = 12.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, top = 10.dp, bottom = 2.dp),
     )
 }
 
@@ -132,7 +138,7 @@ internal fun SettingsNote(text: String) {
         text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = ROW_PADDING, vertical = 8.dp),
+        modifier = Modifier.padding(horizontal = ROW_PADDING, vertical = 6.dp),
     )
 }
 
@@ -142,11 +148,12 @@ internal fun SwitchRow(title: String, description: String?, checked: Boolean, on
         Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .padding(horizontal = ROW_PADDING, vertical = 12.dp),
+            .heightIn(min = 44.dp)
+            .padding(start = ROW_PADDING, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RowText(title, description, Modifier.weight(1f).padding(end = 16.dp))
-        Switch(checked = checked, onCheckedChange = null)
+        RowText(title, description, Modifier.weight(1f).padding(end = 4.dp))
+        Switch(checked = checked, onCheckedChange = null, modifier = Modifier.scale(0.8f))
     }
 }
 
@@ -162,11 +169,12 @@ internal fun RadioRow(
         Modifier
             .fillMaxWidth()
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
-            .padding(start = 4.dp, end = ROW_PADDING, top = 2.dp, bottom = 2.dp),
+            .heightIn(min = 44.dp)
+            .padding(start = ROW_PADDING, end = ROW_PADDING),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled, modifier = Modifier.padding(12.dp))
-        RowText(label, description, Modifier.weight(1f).padding(vertical = 8.dp), enabled = enabled)
+        RadioButton(selected = selected, onClick = null, enabled = enabled, modifier = Modifier.padding(end = 14.dp).size(20.dp))
+        RowText(label, description, Modifier.weight(1f).padding(vertical = 6.dp), enabled = enabled)
     }
 }
 
@@ -179,9 +187,9 @@ internal fun SliderRow(
     range: ClosedFloatingPointRange<Float>,
     onChange: (Float) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = ROW_PADDING, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = ROW_PADDING, end = ROW_PADDING, top = 8.dp, bottom = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(value, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         SlimSlider(position, onChange, range)
@@ -195,7 +203,8 @@ internal fun NavigationRow(title: String, description: String?, value: String? =
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(start = ROW_PADDING, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            .heightIn(min = 44.dp)
+            .padding(start = ROW_PADDING, end = 10.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RowText(title, description, Modifier.weight(1f).padding(end = 8.dp))
@@ -206,7 +215,7 @@ internal fun NavigationRow(title: String, description: String?, value: String? =
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = 4.dp).size(20.dp),
         )
     }
 }
@@ -216,20 +225,20 @@ internal fun NavigationRow(title: String, description: String?, value: String? =
 internal fun ActionRow(title: String, destructive: Boolean = false, onClick: () -> Unit) {
     Text(
         title,
-        style = MaterialTheme.typography.bodyLarge,
+        style = MaterialTheme.typography.bodyMedium,
         color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = ROW_PADDING, vertical = 14.dp),
+            .padding(horizontal = ROW_PADDING, vertical = 12.dp),
     )
 }
 
 @Composable
 private fun RowText(title: String, description: String?, modifier: Modifier, enabled: Boolean = true) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(1.dp)) {
         val onSurface = MaterialTheme.colorScheme.onSurface
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) onSurface else onSurface.copy(alpha = 0.38f))
+        Text(title, style = MaterialTheme.typography.bodyMedium, color = if (enabled) onSurface else onSurface.copy(alpha = 0.38f))
         if (description != null) {
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -281,14 +290,15 @@ internal fun <T> ChoiceRow(title: String, choices: List<Choice<T>>, selected: T,
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = ROW_PADDING, vertical = 12.dp),
+            .heightIn(min = 44.dp)
+            .padding(horizontal = ROW_PADDING, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
             Text(
                 choices.firstOrNull { it.value == selected }?.label.orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
         }
