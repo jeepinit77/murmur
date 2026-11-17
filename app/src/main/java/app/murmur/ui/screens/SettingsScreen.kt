@@ -89,7 +89,6 @@ fun SettingsScreen(
     val rewind by c.settings.rewindSeconds.collectAsStateWithLifecycle()
     val mode by c.settings.themeMode.collectAsStateWithLifecycle()
     val palette by c.settings.palette.collectAsStateWithLifecycle()
-    val notificationReading by c.settings.notificationReading.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
@@ -110,7 +109,7 @@ fun SettingsScreen(
                     onPage(SettingsPage.READING)
                 },
                 Category(Icons.Outlined.Share, "Sharing", "What happens when you share to Murmur") { onPage(SettingsPage.SHARING) },
-                Category(Icons.Outlined.Notifications, "Notification reading", if (notificationReading) "On" else "Off", onNotificationReading),
+                Category(Icons.Outlined.Notifications, "Read Notifications", "Hear notifications automatically or tap to listen later.", onNotificationReading),
             )
             CategoryGroup(
                 Category(Icons.Outlined.Info, "About", "Murmur ${BuildConfig.VERSION_NAME}") { onPage(SettingsPage.ABOUT) },
