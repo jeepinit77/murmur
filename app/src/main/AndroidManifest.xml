@@ -87,13 +87,24 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
-            <!-- "Read aloud" in every app's text-selection menu. -->
+        </activity>
+
+        <!--
+            "Read aloud with Murmur" in other apps' text-selection menus. A separate entry point
+            from the one above, which also opens web links like a browser: Chrome leaves Murmur
+            out of its selection menu, possibly because of that.
+        -->
+        <activity-alias
+            android:name=".share.ReadSelectionActivity"
+            android:targetActivity=".share.ShareToSpeakActivity"
+            android:exported="true"
+            android:label="@string/process_text_label">
             <intent-filter android:label="@string/process_text_label">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
         <!-- "Murmur" in share menus: a popup with Add to queue, Save for later and Open in Murmur. -->
         <activity
