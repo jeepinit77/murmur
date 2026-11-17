@@ -1,5 +1,11 @@
 package app.murmur.ui.screens
 
+import android.provider.Settings as SystemSettings
+import android.net.Uri
+import android.content.Intent
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.media.AudioAttributes
@@ -104,6 +110,13 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var genderFilter by rememberSaveable { mutableStateOf<Gender?>(null) }
+    var languageFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var engineFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    // Voices can be deleted in Google's app while this screen is in the background.
+    LifecycleResumeEffect(Unit) {
+        c.voices.refresh()
+        onPauseOrDispose { }
+    }
     var previewing by remember { mutableStateOf<String?>(null) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
     // An article that was playing when a sample started; it plays again when this screen closes.
@@ -120,6 +133,8 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
     val duplicateNames = mine.groupBy { it.name }.filterValues { it.size > 1 }.keys
     val shown = mine
         .filter { genderFilter == null || it.gender == genderFilter }
+        .filter { languageFilter == null || it.language == languageFilter }
+        .filter { engineFilter == null || it.engine == engineFilter }
         .sortedWith(
             // The voice that was current when the screen opened goes first. Not the live
             // selection: tapping a voice must not move it while you're looking at the list.
@@ -171,20 +186,39 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                 }
                 return@LazyColumn
             }
-            if (mine.size > 3 && mine.any { it.gender != null }) {
+            // Each filter appears only when your voices differ in it.
+            val locales = mine.map { it.language }.distinct()
+                .sortedWith(compareBy<String> { it != deviceLocale }.thenBy { localeName(it) })
+            val genders = Gender.entries.filter { g -> mine.any { it.gender == g } }
+            val engines = mine.map { it.engine }.distinct().sorted()
+            if (mine.size > 3 && (locales.size > 1 || genders.size > 1 || engines.size > 1)) {
                 item(key = "filters") {
                     Row(
-                        Modifier.padding(horizontal = SCREEN_PADDING, vertical = 4.dp),
+                        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = SCREEN_PADDING, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        FilterChip(selected = genderFilter == null, onClick = { genderFilter = null }, label = { Text("All") })
-                        Gender.entries.forEach { g ->
-                            FilterChip(selected = genderFilter == g, onClick = { genderFilter = g }, label = { Text(g.label) })
+                        if (locales.size > 1) {
+                            FilterMenu("Language", "All languages", locales.map { it to localeName(it) }, languageFilter) { languageFilter = it }
+                        }
+                        if (genders.size > 1) {
+                            FilterMenu("Gender", "All genders", genders.map { it to it.label }, genderFilter) { genderFilter = it }
+                        }
+                        if (engines.size > 1) {
+                            FilterMenu("Engine", "All engines", engines.map { it to it }, engineFilter) { engineFilter = it }
                         }
                     }
                 }
             }
             item(key = "h-mine") { CardHeader("Your voices") }
+            if (shown.isEmpty()) {
+                item(key = "no-match") {
+                    Surface(
+                        shape = cardRowShape(0, 1),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_PADDING),
+                    ) { SettingsNote("No voices match these filters.") }
+                }
+            }
             itemsIndexed(shown, key = { _, v -> v.id }) { i, voice ->
                 VoiceRow(
                     voice = voice,
@@ -306,7 +340,8 @@ private class Download(val pkg: VoicePackage, val voices: List<Voice>) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadVoicesScreen(onBack: () -> Unit) {
-    val c = LocalContext.current.container
+    val context = LocalContext.current
+    val c = context.container
     val all by c.voices.voices.collectAsStateWithLifecycle()
     val installed by c.voices.installed.collectAsStateWithLifecycle()
     val deviceLanguage = remember { Locale.getDefault().language }
@@ -316,6 +351,10 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
         mutableStateOf(deviceLanguage.takeIf { lang -> all.any { languageOf(it) == lang } })
     }
     var confirmDelete by remember { mutableStateOf<Download?>(null) }
+    LifecycleResumeEffect(Unit) {
+        c.voices.refresh()
+        onPauseOrDispose { }
+    }
 
     val languages = downloads.flatMap { it.languages }.distinct()
         .sortedWith(compareBy<String> { it != deviceLanguage }.thenBy { languageName(it) })
@@ -333,7 +372,7 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             item(key = "filters") {
                 Box(Modifier.padding(horizontal = SCREEN_PADDING, vertical = 4.dp)) {
-                    LanguageFilter(languages, languageFilter) { languageFilter = it }
+                    FilterMenu("Language", "All languages", languages.map { it to languageName(it) }, languageFilter) { languageFilter = it }
                 }
             }
             if (done.isNotEmpty()) {
@@ -352,23 +391,39 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
     }
 
     confirmDelete?.let { d ->
+        val source = sourceFor(c, d.voices.first())
+        val manage = if (d.pkg.canDelete) null else source.manageIntent(d.pkg)
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete ${d.pkg.name}?") },
             text = {
                 Text(
-                    if (d.pkg.voiceCount > 1) "This removes its ${d.pkg.voiceCount} voices. You can download them again later."
-                    else "You can download this voice again later.",
+                    when {
+                        manage != null ->
+                            "These voices are stored by Google's Speech Recognition & Synthesis app. " +
+                                "Murmur will open its voice settings, where you can delete this language."
+                        d.pkg.voiceCount > 1 -> "This removes its ${d.pkg.voiceCount} voices. You can download them again later."
+                        else -> "You can download this voice again later."
+                    },
                 )
             },
             confirmButton = {
-                TextButton(
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    onClick = {
-                        sourceFor(c, d.voices.first()).delete(d.pkg)
-                        confirmDelete = null
-                    },
-                ) { Text("Delete") }
+                if (manage != null) {
+                    TextButton(
+                        onClick = {
+                            confirmDelete = null
+                            openOrAppInfo(context, manage)
+                        },
+                    ) { Text("Open settings") }
+                } else {
+                    TextButton(
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        onClick = {
+                            source.delete(d.pkg)
+                            confirmDelete = null
+                        },
+                    ) { Text("Delete") }
+                }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
@@ -446,7 +501,7 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
                 busy -> IconButton(onClick = { source.cancelDownload(pkg) }) {
                     Icon(Icons.Filled.Close, contentDescription = "Cancel download")
                 }
-                isInstalled && pkg.canDelete -> TextButton(onClick = onDelete) { Text("Delete") }
+                isInstalled && (pkg.canDelete || source.manageIntent(pkg) != null) -> TextButton(onClick = onDelete) { Text("Delete") }
                 isInstalled -> Unit
                 else -> FilledTonalButton(
                     onClick = { source.download(d.voices.first()) },
@@ -486,21 +541,35 @@ private fun cardRowShape(index: Int, count: Int): Shape {
     return RoundedCornerShape(bottomStart = bottom, bottomEnd = bottom)
 }
 
+/** A filter chip named [name] (or showing the chosen option) that opens a menu of [options]. */
 @Composable
-private fun LanguageFilter(languages: List<String>, selected: String?, onPick: (String?) -> Unit) {
+private fun <T> FilterMenu(name: String, allLabel: String, options: List<Pair<T, String>>, selected: T?, onPick: (T?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         FilterChip(
             selected = selected != null,
             onClick = { open = true },
-            label = { Text(selected?.let { languageName(it) } ?: "All languages") },
+            label = { Text(options.firstOrNull { it.first == selected }?.second ?: name) },
             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("All languages") }, onClick = { open = false; onPick(null) })
-            languages.forEach { code ->
-                DropdownMenuItem(text = { Text(languageName(code)) }, onClick = { open = false; onPick(code) })
+            DropdownMenuItem(text = { Text(allLabel) }, onClick = { open = false; onPick(null) })
+            options.forEach { (value, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onPick(value) })
             }
+        }
+    }
+}
+
+/** Opens [intent], or the app's info page in system settings if it can't be opened. */
+private fun openOrAppInfo(context: android.content.Context, intent: Intent) {
+    runCatching { context.startActivity(intent) }.onFailure {
+        val pkg = intent.`package` ?: return
+        runCatching {
+            context.startActivity(
+                Intent(SystemSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", pkg, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 }

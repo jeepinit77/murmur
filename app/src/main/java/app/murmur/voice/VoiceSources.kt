@@ -59,6 +59,8 @@ class VoiceSources(
 
     fun release() = sources.forEach { it.release() }
 
+    fun refresh() = sources.forEach { it.refresh() }
+
     fun languageOf(voice: Voice): String = java.util.Locale.forLanguageTag(voice.language).language
 
     private fun ensureSelection(ready: Set<String>) {

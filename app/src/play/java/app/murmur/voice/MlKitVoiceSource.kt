@@ -1,6 +1,7 @@
 package app.murmur.voice
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
@@ -126,8 +127,19 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         stateFor(pkg.id).value = DownloadState.Idle
     }
 
-    /** Google's speech app manages these files; Murmur can't delete them. */
+    /** Google's speech app manages these files; Murmur can't delete them. See [manageIntent]. */
     override fun delete(pkg: VoicePackage) = Unit
+
+    /** Google's speech app's voice data screen, where its languages can be deleted. */
+    override fun manageIntent(pkg: VoicePackage): Intent =
+        Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).setPackage(ENGINE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    override fun refresh() {
+        if (!activated.get()) return
+        scope.launch {
+            runCatching { refreshStatus() }.onFailure { if (it is CancellationException) throw it else Log.w(TAG, "Status check failed", it) }
+        }
+    }
 
     override suspend fun speak(voice: Voice, text: String, speed: Float, onStart: () -> Unit) {
         val info = infos[voice.id] ?: error("This Google voice isn't available on this phone")
