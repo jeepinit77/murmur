@@ -3,6 +3,7 @@ package app.murmur.playback
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.widget.Toast
@@ -96,7 +97,19 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // The service is exported for media controls, so other apps can reach it. Murmur's own
+        // commands carry a private token; anything else is ignored.
+        val action = intent?.action
+        if (action in OWN_ACTIONS && !hasValidToken(this, intent!!)) {
+            Log.w("MurmurPlayback", "Ignoring $action without Murmur's token")
+            if (action != ACTION_CANCEL_IMPORT) {
+                // Started with startForegroundService(): Android requires a foreground notification.
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, preparingNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                stopIfIdle()
+            }
+            return super.onStartCommand(intent, flags, startId)
+        }
+        when (action) {
             ACTION_SPEAK -> {
                 // We were started with startForegroundService(): promote immediately. Media3 replaces
                 // this notification with the media-style one (same id) once playback state updates.
@@ -261,10 +274,30 @@ class PlaybackService : MediaSessionService() {
         }
 
         fun speakNotificationIntent(context: Context, batchId: Int): Intent =
-            Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK_NOTIFICATION).putExtra(EXTRA_BATCH, batchId)
+            withToken(context, Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK_NOTIFICATION).putExtra(EXTRA_BATCH, batchId))
 
         fun speakIntent(context: Context, request: SpeakRequest): Intent =
-            Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK).also { request.writeTo(context, it) }
+            withToken(context, Intent(context, PlaybackService::class.java).setAction(ACTION_SPEAK).also { request.writeTo(context, it) })
+
+        fun cancelImportIntent(context: Context): Intent =
+            withToken(context, Intent(context, PlaybackService::class.java).setAction(ACTION_CANCEL_IMPORT))
+
+        private val OWN_ACTIONS = setOf(ACTION_SPEAK, ACTION_SPEAK_NOTIFICATION, ACTION_CANCEL_IMPORT)
+        private const val EXTRA_TOKEN = "app.murmur.extra.TOKEN"
+
+        /** A random value kept in Murmur's private storage, so it also survives in saved PendingIntents. */
+        private fun token(context: Context): String {
+            val prefs = context.getSharedPreferences("service", Context.MODE_PRIVATE)
+            prefs.getString("token", null)?.let { return it }
+            val fresh = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("token", fresh).apply()
+            return fresh
+        }
+
+        private fun withToken(context: Context, intent: Intent): Intent = intent.putExtra(EXTRA_TOKEN, token(context))
+
+        private fun hasValidToken(context: Context, intent: Intent): Boolean =
+            intent.getStringExtra(EXTRA_TOKEN) == token(context)
     }
 }
 
@@ -274,7 +307,7 @@ suspend fun SpeakRequest.import(context: Context, onStage: (String) -> Unit, imp
     return when {
         uri != null -> c.imports.save(c.importer.fromUri(uri, mime))
         textFile != null -> {
-            val f = File(textFile)
+            val f = sharedTextFile(context) ?: error("Nothing to read")
             val text = f.readText()
             f.delete()
             c.imports.text(text, subject, onStage, importAgain)
@@ -331,12 +364,17 @@ data class SpeakRequest(
             if (text.length > MAX_INLINE) {
                 val f = File(context.cacheDir, "share-${System.nanoTime()}.txt")
                 f.writeText(text)
-                intent.putExtra(EXTRA_TEXT_FILE, f.absolutePath)
+                // Only the name: the service looks for it in the cache folder, nowhere else.
+                intent.putExtra(EXTRA_TEXT_FILE, f.name)
             } else {
                 intent.putExtra(EXTRA_TEXT, text)
             }
         }
     }
+
+    /** Long shared text saved by [writeTo]: a file with Murmur's naming in its cache folder, or null. */
+    fun sharedTextFile(context: Context): File? =
+        textFile?.takeIf { SHARE_FILE_NAME.matches(it) }?.let { File(context.cacheDir, it) }
 
     companion object {
         private const val EXTRA_TEXT = "text"
@@ -348,6 +386,7 @@ data class SpeakRequest(
         private const val EXTRA_IMPORT_AGAIN = "import_again"
         private const val EXTRA_ACTION = "share_action"
         private const val MAX_INLINE = 200_000
+        private val SHARE_FILE_NAME = Regex("share-\\d+\\.txt")
 
         fun fromServiceIntent(intent: Intent): SpeakRequest? {
             val r = SpeakRequest(

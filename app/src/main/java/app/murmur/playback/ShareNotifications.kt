@@ -22,7 +22,7 @@ object ShareNotifications {
     fun showProgress(context: Context, label: String, stage: String?) {
         val cancel = PendingIntent.getService(
             context, 0,
-            Intent(context, PlaybackService::class.java).setAction(PlaybackService.ACTION_CANCEL_IMPORT),
+            PlaybackService.cancelImportIntent(context),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = builder(context)

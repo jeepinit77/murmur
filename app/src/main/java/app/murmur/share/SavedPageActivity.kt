@@ -104,7 +104,7 @@ class SavedPageActivity : ComponentActivity() {
 
     /** Closed without choosing: nothing is read, and a large share's cache file is removed. */
     private fun cancel(request: SpeakRequest) {
-        request.textFile?.let { File(it).delete() }
+        request.sharedTextFile(this)?.delete()
         finish()
     }
 

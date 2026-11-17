@@ -94,7 +94,7 @@ class ShareOptionsActivity : ComponentActivity() {
 
                 fun close() {
                     opening?.cancel()
-                    request.textFile?.let { File(it).delete() }
+                    request.sharedTextFile(this)?.delete()
                     finish()
                 }
 
