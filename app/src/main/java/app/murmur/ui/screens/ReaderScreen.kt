@@ -533,14 +533,15 @@ private fun ReaderScreenBody(
             exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            // Reader mode hides the status bar while reading, and the inset can still read as zero
-            // when the bars come back; keeping its space always puts the top bar below it.
-            val statusBarSpace = if (readerMode) {
-                Modifier
-                    .then(if (findQuery != null) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier)
-                    .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
-                    .consumeWindowInsets(WindowInsets.statusBarsIgnoringVisibility)
-            } else Modifier
+            // Reader mode hides the status bar, and the inset can still read as zero after the bars
+            // come back, in reader mode and in the article just after leaving it. Keeping the status
+            // bar's space always puts the top bar below it.
+            val statusBarSpace = Modifier
+                .then(
+                    if (!readerMode || findQuery != null) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier,
+                )
+                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                .consumeWindowInsets(WindowInsets.statusBarsIgnoringVisibility)
             Column(Modifier.fillMaxWidth().onSizeChanged { topHeight = maxOf(topHeight, it.height) }.then(statusBarSpace)) {
                 TopChrome {
                         val query = findQuery
