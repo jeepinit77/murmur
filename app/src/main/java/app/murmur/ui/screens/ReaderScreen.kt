@@ -183,9 +183,10 @@ fun ReaderScreen(
     initialFind: String? = null,
     readerMode: Boolean = false,
     onReaderMode: ((docId: String) -> Unit)? = null,
+    onSettings: () -> Unit = {},
 ) {
     ReadingTheme(enabled = readerMode) {
-        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderMode)
+        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderMode, onSettings)
     }
 }
 
@@ -198,6 +199,7 @@ private fun ReaderScreenBody(
     initialFind: String?,
     readerMode: Boolean,
     onReaderMode: ((String) -> Unit)?,
+    onSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val c = context.container
@@ -601,6 +603,10 @@ private fun ReaderScreenBody(
                                     context.startActivity(SiteSignInActivity.intent(context, meta.source, meta.id))
                                 })
                             }
+                            DropdownMenuItem(text = { Text("Settings") }, onClick = {
+                                menuOpen = false
+                                onSettings()
+                            })
                         }
                         if (readerMode) {
                             // A floating bar, like a reading app's controls, rather than a full-width app bar.

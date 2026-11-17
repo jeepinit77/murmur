@@ -1,5 +1,13 @@
 package app.murmur.ui.screens
 
+import android.os.SystemClock
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.murmur.container
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -23,7 +31,6 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -49,12 +56,10 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -349,10 +354,18 @@ private fun ExpandedControls(
             }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth()) {
             SpeedButton(state, reader, Modifier.weight(1f))
             SleepButton(state, reader, Modifier.weight(1f))
-            OptionButton(Icons.Default.RecordVoiceOver, "Voice", onClick = onVoices, modifier = Modifier.weight(1f))
+            val c = LocalContext.current.container
+            val voiceId by c.settings.voice.collectAsStateWithLifecycle()
+            val voices by c.voices.voices.collectAsStateWithLifecycle()
+            OptionButton(
+                Icons.Default.RecordVoiceOver,
+                voices.firstOrNull { it.id == voiceId }?.name ?: "Voice",
+                onClick = onVoices,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -389,7 +402,10 @@ private fun SkipSecondsIcon(seconds: Int, forward: Boolean, size: Dp = 24.dp) {
     }
 }
 
-/** One of the equal-width buttons under the transport controls. */
+/**
+ * One of the equal-width controls under the transport controls: an icon with the current value
+ * under it ("1.5×", "25 min", the voice's name), tinted when it's changed from the default.
+ */
 @Composable
 private fun OptionButton(
     icon: ImageVector,
@@ -398,20 +414,23 @@ private fun OptionButton(
     modifier: Modifier = Modifier,
     active: Boolean = false,
 ) {
-    val colors = MaterialTheme.colorScheme
-    FilledTonalButton(
-        onClick = onClick,
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-        colors = if (active) {
-            ButtonDefaults.filledTonalButtonColors()
-        } else {
-            ButtonDefaults.filledTonalButtonColors(containerColor = colors.surfaceContainerHighest, contentColor = colors.onSurface)
-        },
+    val tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, null, Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, null, Modifier.size(22.dp), tint = tint)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
+        )
     }
 }
 
@@ -440,13 +459,22 @@ private fun SpeedButton(state: ReaderState, reader: Reader, modifier: Modifier =
 @Composable
 private fun SleepButton(state: ReaderState, reader: Reader, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
+    val at = state.sleepAtElapsed
+    // Minutes left on the timer, counted down while it runs.
+    val minutesLeft by produceState<Int?>(null, at) {
+        while (at != null) {
+            value = ((at - SystemClock.elapsedRealtime()) / 60_000.0).let { kotlin.math.ceil(it).toInt() }.coerceAtLeast(1)
+            delay(15_000)
+        }
+        value = null
+    }
     Box(modifier) {
         OptionButton(
             Icons.Default.Bedtime,
-            if (state.sleepAtElapsed != null) "Sleep on" else "Sleep",
+            minutesLeft?.let { "$it min" } ?: "Sleep",
             onClick = { open = true },
             modifier = Modifier.fillMaxWidth(),
-            active = state.sleepAtElapsed != null,
+            active = at != null,
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(5, 15, 30, 45, 60).forEach { m ->
@@ -455,7 +483,7 @@ private fun SleepButton(state: ReaderState, reader: Reader, modifier: Modifier =
                     open = false
                 })
             }
-            if (state.sleepAtElapsed != null) {
+            if (at != null) {
                 DropdownMenuItem(text = { Text("Off") }, onClick = {
                     reader.setSleepTimer(null)
                     open = false

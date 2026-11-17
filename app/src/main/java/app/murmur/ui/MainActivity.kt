@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.popBackStack() },
                             onVoices = { nav.navigate(ROUTE_VOICES) },
                             onReaderMode = { id -> nav.navigate("$ROUTE_READER_MODE/$id") },
+                            onSettings = { nav.navigate(ROUTE_SETTINGS) },
                         )
                     }
                     // Reader mode slides in from the side, like any screen opened from the article.
@@ -115,6 +116,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.popBackStack() },
                             onVoices = { nav.navigate(ROUTE_VOICES) },
                             readerMode = true,
+                            onSettings = { nav.navigate(ROUTE_SETTINGS) },
                         )
                     }
                     composable(
@@ -127,6 +129,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) },
                             onVoices = { nav.navigate(ROUTE_VOICES) },
                             onReaderMode = { id -> nav.navigate("$ROUTE_READER_MODE/$id") },
+                            onSettings = { nav.navigate(ROUTE_SETTINGS) },
                         )
                     }
                     composable(ROUTE_VOICES) {
