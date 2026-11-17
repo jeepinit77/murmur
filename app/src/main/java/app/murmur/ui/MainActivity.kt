@@ -1,5 +1,7 @@
 package app.murmur.ui
 
+import app.murmur.share.ShareToSpeakActivity
+import android.content.ClipboardManager
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
@@ -54,6 +56,8 @@ class MainActivity : ComponentActivity() {
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val pendingRoute = mutableStateOf<String?>(null)
+    /** Opened with Read aloud from the app icon: read the clipboard once the window has focus. */
+    private var readClipboardOnFocus = false
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -194,6 +198,32 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra(EXTRA_ROUTE)?.let { pendingRoute.value = it }
         if (intent.getBooleanExtra(EXTRA_SHOW_PLAYER, false)) container.playerExpandRequest.value = true
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let { importAndPlay(it, intent.type) }
+        if (intent.action == ACTION_READ_CLIPBOARD) readClipboardOnFocus = true
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Android only lets an app read the clipboard while one of its windows has focus.
+        if (hasFocus && readClipboardOnFocus) {
+            readClipboardOnFocus = false
+            readClipboardAloud()
+        }
+    }
+
+    /** Reads the copied text aloud, the same way as sharing it to Read aloud. */
+    private fun readClipboardAloud() {
+        val clip = getSystemService(ClipboardManager::class.java).primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
+        if (text.isNullOrEmpty()) {
+            Toast.makeText(this, "There's no copied text to read.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(
+            Intent(this, ShareToSpeakActivity::class.java)
+                .setAction(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, text),
+        )
     }
 
     /** "Open with Murmur" for PDF/EPUB files: import, show the reader and start reading. */
@@ -212,6 +242,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_ROUTE = "route"
+        /** Read aloud from the app icon's long-press menu: read the copied text. */
+        const val ACTION_READ_CLIPBOARD = "app.murmur.action.READ_CLIPBOARD"
         /** Opened from the playback notification: show the player expanded. */
         const val EXTRA_SHOW_PLAYER = "show_player"
         const val ROUTE_LIBRARY = "library"

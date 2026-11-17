@@ -3,6 +3,7 @@
     <string name="app_name">Murmur</string>
     <string name="share_label">Read aloud now</string>
     <string name="process_text_label">Read aloud</string>
+    <string name="share_shortcut_label">Read aloud</string>
     <string name="reading">Reading aloud…</string>
     <string name="queued">Added to the reading queue</string>
     <string name="nothing_to_read">Nothing to read in what was shared</string>

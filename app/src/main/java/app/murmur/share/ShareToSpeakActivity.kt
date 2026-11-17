@@ -46,6 +46,8 @@ class ShareToSpeakActivity : Activity() {
             return
         }
         if (!checkVoice(this)) return
+        // Shared with Read aloud (from the app icon or the shortcut): rank the shortcut higher.
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) ShareShortcuts.reportUsed(this)
         savedCopyToAskAbout(request)?.let { saved ->
             startActivity(SavedPageActivity.intent(this, request, saved.title))
             return

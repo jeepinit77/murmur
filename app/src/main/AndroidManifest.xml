@@ -45,6 +45,8 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/epub+zip" />
             </intent-filter>
+            <!-- Direct Share target for the "Read aloud" sharing shortcut. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/share_targets" />
         </activity>
 
         <!--

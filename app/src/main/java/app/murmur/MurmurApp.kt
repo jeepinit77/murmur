@@ -1,5 +1,6 @@
 package app.murmur
 
+import app.murmur.share.ShareShortcuts
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -38,6 +39,7 @@ class MurmurApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         createChannels()
+        ShareShortcuts.publish(this)
         // The listener unbinds itself while the setting is off; reconnect it if it's on now.
         if (container.settings.notificationReading.value) NotificationReaderService.applySetting(this, true)
     }

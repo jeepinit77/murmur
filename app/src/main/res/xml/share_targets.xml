@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Direct Share: the "Read aloud" sharing shortcut (see ShareShortcuts) can appear in the top row
+    of the share menu, apart from Murmur's app icon, which Android groups with its other share
+    target and asks which one to use.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="app.murmur.share.ShareToSpeakActivity">
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="text/html" />
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="application/epub+zip" />
+        <category android:name="app.murmur.category.READ_ALOUD" />
+    </share-target>
+</shortcuts>
