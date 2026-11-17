@@ -1,7 +1,5 @@
 package app.murmur.voice
 
-import android.content.Intent
-
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -59,12 +57,6 @@ sealed interface VoiceSource {
     fun download(voice: Voice)
     fun cancelDownload(pkg: VoicePackage)
     fun delete(pkg: VoicePackage)
-
-    /**
-     * Opens the app that keeps [pkg]'s files, for downloads Murmur can't delete itself (Google
-     * voices); null when Murmur deletes them.
-     */
-    fun manageIntent(pkg: VoicePackage): Intent? = null
 
     /** Checks again which voices are installed, for example after returning from another app. */
     fun refresh() {}

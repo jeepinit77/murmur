@@ -1,8 +1,5 @@
 package app.murmur.ui.screens
 
-import android.provider.Settings as SystemSettings
-import android.net.Uri
-import android.content.Intent
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -340,8 +337,7 @@ private class Download(val pkg: VoicePackage, val voices: List<Voice>) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadVoicesScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val c = context.container
+    val c = LocalContext.current.container
     val all by c.voices.voices.collectAsStateWithLifecycle()
     val installed by c.voices.installed.collectAsStateWithLifecycle()
     val deviceLanguage = remember { Locale.getDefault().language }
@@ -392,38 +388,29 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
 
     confirmDelete?.let { d ->
         val source = sourceFor(c, d.voices.first())
-        val manage = if (d.pkg.canDelete) null else source.manageIntent(d.pkg)
+        val google = d.voices.first().engine == "Google"
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete ${d.pkg.name}?") },
             text = {
                 Text(
                     when {
-                        manage != null ->
-                            "These voices are stored by Google's Speech Recognition & Synthesis app. " +
-                                "Murmur will open its voice settings, where you can delete this language."
+                        google ->
+                            "This removes these voices from Murmur. Google's Speech Recognition & Synthesis app " +
+                                "keeps the voice files, which Murmur can't delete. You can download them again later."
                         d.pkg.voiceCount > 1 -> "This removes its ${d.pkg.voiceCount} voices. You can download them again later."
                         else -> "You can download this voice again later."
                     },
                 )
             },
             confirmButton = {
-                if (manage != null) {
-                    TextButton(
-                        onClick = {
-                            confirmDelete = null
-                            openOrAppInfo(context, manage)
-                        },
-                    ) { Text("Open settings") }
-                } else {
-                    TextButton(
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        onClick = {
-                            source.delete(d.pkg)
-                            confirmDelete = null
-                        },
-                    ) { Text("Delete") }
-                }
+                TextButton(
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        source.delete(d.pkg)
+                        confirmDelete = null
+                    },
+                ) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
@@ -455,7 +442,7 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
                         locale,
                         d.languages.size.takeIf { it > 2 }?.let { "$it languages" },
                         pkg.sizeMb?.let { "$it MB" },
-                        if (isInstalled && !pkg.canDelete) "Managed by Google" else pkg.highlight.takeIf { it.isNotBlank() },
+                        pkg.highlight.takeIf { it.isNotBlank() },
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -501,7 +488,7 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
                 busy -> IconButton(onClick = { source.cancelDownload(pkg) }) {
                     Icon(Icons.Filled.Close, contentDescription = "Cancel download")
                 }
-                isInstalled && (pkg.canDelete || source.manageIntent(pkg) != null) -> TextButton(onClick = onDelete) { Text("Delete") }
+                isInstalled && pkg.canDelete -> TextButton(onClick = onDelete) { Text("Delete") }
                 isInstalled -> Unit
                 else -> FilledTonalButton(
                     onClick = { source.download(d.voices.first()) },
@@ -557,19 +544,6 @@ private fun <T> FilterMenu(name: String, allLabel: String, options: List<Pair<T,
             options.forEach { (value, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onPick(value) })
             }
-        }
-    }
-}
-
-/** Opens [intent], or the app's info page in system settings if it can't be opened. */
-private fun openOrAppInfo(context: android.content.Context, intent: Intent) {
-    runCatching { context.startActivity(intent) }.onFailure {
-        val pkg = intent.`package` ?: return
-        runCatching {
-            context.startActivity(
-                Intent(SystemSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", pkg, null))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
         }
     }
 }

@@ -1,7 +1,6 @@
 package app.murmur.voice
 
 import android.content.Context
-import android.content.Intent
 import android.media.AudioAttributes
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
@@ -47,6 +46,10 @@ import kotlin.coroutines.resume
  * default the speech app then reads with another voice without reporting an error. So voice
  * fallback is turned off, and a voice counts as ready only when the speech app lists it as
  * installed ([installedInEngine]).
+ *
+ * Murmur can't delete these voices: the speech app keeps them, and its own voice data screen
+ * doesn't list them. Deleting a language here removes its voices from Murmur ([removed]) until
+ * it's downloaded again.
  */
 class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : PlayingVoiceSource {
 
@@ -64,6 +67,9 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
 
     private val _voices = MutableStateFlow<List<Voice>>(emptyList())
     override val voices: StateFlow<List<Voice>> = _voices.asStateFlow()
+
+    /** Packages (one per language) removed from Murmur with Delete; their voices count as not installed. */
+    private var removed: Set<String> = prefs.getStringSet(KEY_REMOVED, null).orEmpty().toSet()
 
     // Seeded from the last run so a Google voice counts as ready before the status check finishes.
     private val _installed = MutableStateFlow(prefs.getStringSet(KEY_INSTALLED, null).orEmpty().toSet())
@@ -91,6 +97,7 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
     override fun download(voice: Voice) {
         val info = infos[voice.id] ?: return
         val pkgId = voice.pkg.id
+        setRemoved(pkgId, false)
         if (downloadJobs[pkgId]?.isActive == true) return
         val state = stateFor(pkgId)
         state.value = DownloadState.Running(null, "Downloading")
@@ -127,12 +134,18 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         stateFor(pkg.id).value = DownloadState.Idle
     }
 
-    /** Google's speech app manages these files; Murmur can't delete them. See [manageIntent]. */
-    override fun delete(pkg: VoicePackage) = Unit
+    /** Removes the language's voices from Murmur. Google's speech app keeps the files. */
+    override fun delete(pkg: VoicePackage) {
+        setRemoved(pkg.id, true)
+        val gone = _voices.value.filter { it.pkg.id == pkg.id }.map { it.id }.toSet()
+        _installed.value = _installed.value - gone
+        prefs.edit { putStringSet(KEY_INSTALLED, _installed.value) }
+    }
 
-    /** Google's speech app's voice data screen, where its languages can be deleted. */
-    override fun manageIntent(pkg: VoicePackage): Intent =
-        Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).setPackage(ENGINE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    private fun setRemoved(pkgId: String, on: Boolean) {
+        removed = if (on) removed + pkgId else removed - pkgId
+        prefs.edit { putStringSet(KEY_REMOVED, removed) }
+    }
 
     override fun refresh() {
         if (!activated.get()) return
@@ -232,7 +245,7 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
                 description = "Downloaded and updated by Google's Speech Recognition & Synthesis app. " +
                     "One download includes all ${found.size} voices for this language.",
                 highlight = "Fast to start",
-                canDelete = false,
+                canDelete = true,
             )
             for (info in found) {
                 val voiceId = "$ID:${info.name}"
@@ -272,8 +285,10 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         if (notInEngine.isNotEmpty()) {
             Log.w(TAG, "ML Kit reports these voices as available, but Google's speech app hasn't installed them: ${notInEngine.sorted()}")
         }
-        _installed.value = ready
-        prefs.edit { putStringSet(KEY_INSTALLED, ready) }
+        // Languages deleted in Murmur stay hidden even though the speech app still has them.
+        val shown = ready.filterTo(mutableSetOf()) { id -> _voices.value.firstOrNull { it.id == id }?.pkg?.id !in removed }
+        _installed.value = shown
+        prefs.edit { putStringSet(KEY_INSTALLED, shown) }
     }
 
     /**
@@ -321,6 +336,7 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         const val ID = "mlkit"
         private const val TAG = "MlKitVoices"
         private const val KEY_INSTALLED = "installed"
+        private const val KEY_REMOVED = "removed"
         private const val ENGINE = "com.google.android.tts"
         private const val ENGINE_TIMEOUT_MS = 5_000L
         private const val NOT_INSTALLED_PACKAGE =
