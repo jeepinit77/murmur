@@ -14,13 +14,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -97,23 +97,23 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             CategoryGroup(
-                Category(Icons.Default.RecordVoiceOver, "Voice", voices.firstOrNull { it.id == voiceId }?.name ?: "None", onVoices),
-                Category(Icons.Default.PlayCircle, "Playback", "${formatSpeed(speed)} · Rewind $rewind seconds") { onPage(SettingsPage.PLAYBACK) },
-                Category(Icons.Default.Palette, "Appearance", "${mode.label} · ${palette.label}") { onPage(SettingsPage.APPEARANCE) },
+                Category(Icons.Outlined.RecordVoiceOver, "Voice", voices.firstOrNull { it.id == voiceId }?.name ?: "None", onVoices),
+                Category(Icons.Outlined.PlayCircle, "Playback", "${formatSpeed(speed)} · Rewind $rewind seconds") { onPage(SettingsPage.PLAYBACK) },
+                Category(Icons.Outlined.Palette, "Appearance", "${mode.label} · ${palette.label}") { onPage(SettingsPage.APPEARANCE) },
             )
             CategoryGroup(
-                Category(Icons.AutoMirrored.Filled.Article, "Reading", "Web articles, code blocks, tables and website sign-ins") {
+                Category(Icons.AutoMirrored.Outlined.Article, "Reading", "Web articles, code blocks, tables and website sign-ins") {
                     onPage(SettingsPage.READING)
                 },
-                Category(Icons.Default.Share, "Sharing", "What happens when you share to Murmur") { onPage(SettingsPage.SHARING) },
-                Category(Icons.Default.Notifications, "Notification reading", if (notificationReading) "On" else "Off", onNotificationReading),
+                Category(Icons.Outlined.Share, "Sharing", "What happens when you share to Murmur") { onPage(SettingsPage.SHARING) },
+                Category(Icons.Outlined.Notifications, "Notification reading", if (notificationReading) "On" else "Off", onNotificationReading),
             )
             CategoryGroup(
-                Category(Icons.Default.Info, "About", "Murmur ${BuildConfig.VERSION_NAME}") { onPage(SettingsPage.ABOUT) },
+                Category(Icons.Outlined.Info, "About", "Murmur ${BuildConfig.VERSION_NAME}") { onPage(SettingsPage.ABOUT) },
             )
         }
     }
@@ -121,38 +121,13 @@ fun SettingsScreen(
 
 private class Category(val icon: ImageVector, val title: String, val summary: String, val onClick: () -> Unit)
 
-/** Categories that belong together, as one segmented list. */
+/** Categories that belong together, in one card. */
 @Composable
 private fun CategoryGroup(vararg items: Category) {
-    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    SectionCard {
         items.forEachIndexed { i, item ->
-            Surface(
-                onClick = item.onClick,
-                shape = segmentShape(i, items.size),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(item.icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
-                    }
-                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                        Text(item.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            item.summary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
+            if (i > 0) SectionDivider()
+            CompactNavigationRow(item.icon, item.title, item.summary, item.onClick)
         }
     }
 }

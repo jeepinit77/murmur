@@ -37,6 +37,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 
 /*
  * Building blocks for settings screens: settings sit in rounded cards, grouped under a title, as in
@@ -302,6 +309,95 @@ internal fun <T> ChoiceRow(title: String, choices: List<Choice<T>>, selected: T,
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/*
+ * Compact settings: rounded cards with their heading inside, 20dp icons, smaller text and inset
+ * dividers. Used where a screen holds many rows, such as notification reading.
+ */
+
+/** A card of compact rows, with an optional small heading inside it. */
+@Composable
+internal fun SectionCard(
+    title: String? = null,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.surfaceContainer,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = color) {
+        Column(Modifier.padding(top = if (title == null) 4.dp else 0.dp, bottom = 4.dp)) {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 2.dp),
+                )
+            }
+            content()
+        }
+    }
+}
+
+/** A divider between compact rows, starting where their text starts. */
+@Composable
+internal fun SectionDivider(start: Dp = 48.dp) {
+    HorizontalDivider(Modifier.padding(start = start, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun CompactRowText(title: String, description: String?, modifier: Modifier) {
+    Column(modifier.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(title, style = MaterialTheme.typography.bodyMedium)
+        if (description != null) {
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun CompactIcon(icon: ImageVector?) {
+    if (icon != null) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 14.dp).size(20.dp))
+    }
+}
+
+@Composable
+internal fun CompactSwitchRow(icon: ImageVector?, title: String, description: String? = null, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .heightIn(min = 44.dp)
+            .padding(start = 14.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompactIcon(icon)
+        CompactRowText(title, description, Modifier.weight(1f).padding(end = 4.dp))
+        Switch(checked = checked, onCheckedChange = null, modifier = Modifier.scale(0.8f))
+    }
+}
+
+/** A compact row that opens another screen, with an optional summary under its title. */
+@Composable
+internal fun CompactNavigationRow(icon: ImageVector?, title: String, summary: String? = null, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 44.dp)
+            .padding(start = 14.dp, end = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompactIcon(icon)
+        CompactRowText(title, summary, Modifier.weight(1f).padding(end = 4.dp))
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
         )
     }
 }

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings as SystemSettings
 import android.text.format.DateUtils
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
@@ -57,8 +59,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -72,6 +77,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -97,7 +105,7 @@ private class AppLists(val chosen: List<AppEntry>, val others: List<AppEntry>) {
     val size: Int get() = chosen.size + others.size
 }
 
-/** With more apps than this, a search field appears above the list. */
+/** With more apps than this, a Search button appears in the top bar. */
 private const val SEARCH_THRESHOLD = 8
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,6 +120,15 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
     val readingRules by s.readingRules.collectAsStateWithLifecycle()
     val lastNotified by s.lastNotified.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    fun closeSearch() {
+        searching = false
+        query = ""
+    }
+    BackHandler(searching) { closeSearch() }
+    // While searching, only matching apps are shown; keep the first of them in view as the query changes.
+    LaunchedEffect(query, searching) { if (searching) scroll.animateScrollTo(0) }
     // Only one app's settings are open at a time.
     var expandedApp by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -141,32 +158,49 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
     }
     fun matches(app: AppEntry) = query.isBlank() || app.label.contains(query.trim(), ignoreCase = true)
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Notification reading") }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
+    val canSearch = enabled && (loaded?.size ?: 0) > SEARCH_THRESHOLD
+    Scaffold(
+        topBar = {
+            if (searching) {
+                SearchTopBar(query, onChange = { query = it }, onClose = ::closeSearch)
+            } else {
+                TopAppBar(
+                    title = { Text("Notification reading") },
+                    navigationIcon = { BackIcon(onBack) },
+                    actions = {
+                        if (canSearch) {
+                            IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, contentDescription = "Search apps") }
+                        }
+                    },
+                )
+            }
+        },
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+                .verticalScroll(scroll)
+                .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SettingsGroup(
-                note = "Murmur adds a notification with a Play button when an app you choose sends a notification. " +
-                    "Notification text stays on this phone and isn't saved.",
-            ) {
-                SwitchRow(
-                    title = "Read notifications",
-                    description = "Requires notification access, which lets Murmur see all notifications. Only the apps you choose are read.",
-                    checked = enabled,
-                    onChange = { on ->
-                        s.setNotificationReading(on)
-                        NotificationReaderService.applySetting(context, on)
-                        if (on && !hasAccess) openAccessSettings(context)
-                    },
-                )
+            if (!searching) {
+                SectionCard {
+                    CompactSwitchRow(
+                        icon = null,
+                        title = "Read notifications",
+                        description = "Requires notification access. Only the apps you check are read, and notification text isn't saved.",
+                        checked = enabled,
+                        onChange = { on ->
+                            s.setNotificationReading(on)
+                            NotificationReaderService.applySetting(context, on)
+                            if (on && !hasAccess) openAccessSettings(context)
+                        },
+                    )
+                }
             }
 
-            if (enabled && !hasAccess) {
+            if (enabled && !hasAccess && !searching) {
                 SettingsCard(color = MaterialTheme.colorScheme.errorContainer) {
                     Text(
                         "Murmur doesn't have notification access.",
@@ -199,7 +233,7 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
                 @Composable
                 fun ColumnScope.appRows(list: List<AppEntry>) {
                     list.forEachIndexed { i, app ->
-                        if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        if (i > 0) SectionDivider(start = 92.dp)
                         val checked = app.pkg in readApps
                         val expanded = checked && expandedApp == app.pkg
                         val autoPlay = app.pkg in autoPlayApps
@@ -228,59 +262,62 @@ fun NotificationReadingScreen(onBack: () -> Unit) {
                     }
                 }
 
-                val chosen = lists.chosen.filter(::matches)
-                val others = lists.others.filter(::matches)
-                val noMatches = !lists.isEmpty && chosen.isEmpty() && others.isEmpty()
-                SettingsGroup(
-                    "Apps",
-                    note = if (lists.isEmpty) null else "Check the apps to read. Use the settings button next to an app to choose Auto-play and what's read.",
-                    header = if (lists.size > SEARCH_THRESHOLD) {
-                        { AppSearchField(query, onChange = { query = it }) }
-                    } else {
-                        null
-                    },
-                ) {
-                    when {
-                        lists.isEmpty -> SettingsNote("Apps appear here after they send a notification.")
-                        noMatches -> SettingsNote("No matching apps")
-                        // With nothing chosen yet, every app is in this one list.
-                        lists.chosen.isEmpty() -> appRows(others)
-                        chosen.isEmpty() -> SettingsNote("No matching apps")
-                        else -> appRows(chosen)
+                // With nothing chosen yet, every app is in the first list.
+                val first = (if (lists.chosen.isEmpty()) lists.others else lists.chosen).filter(::matches)
+                val second = (if (lists.chosen.isEmpty()) emptyList() else lists.others).filter(::matches)
+                when {
+                    lists.isEmpty -> SectionCard("Apps") { SettingsNote("Apps appear here after they send a notification.") }
+                    first.isEmpty() && second.isEmpty() -> SectionCard("Apps") { SettingsNote("No matching apps") }
+                    else -> {
+                        // Sections without matches are left out while searching.
+                        if (first.isNotEmpty()) SectionCard("Apps") { appRows(first) }
+                        if (second.isNotEmpty()) SectionCard("Other apps") { appRows(second) }
                     }
-                }
-                if (lists.chosen.isNotEmpty() && others.isNotEmpty()) {
-                    SettingsGroup("Other apps") { appRows(others) }
                 }
             }
 
-            if (hasAccess) {
-                SettingsGroup(note = "To remove notification access, turn it off in notification access settings.") {
-                    NavigationRow("Notification access settings", description = null) { openAccessSettings(context) }
+            if (hasAccess && !searching) {
+                SectionCard {
+                    CompactNavigationRow(icon = null, title = "Notification access settings") { openAccessSettings(context) }
                 }
             }
         }
     }
 }
 
+/** The top bar while searching: a back arrow that closes the search, and the search field. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppSearchField(query: String, onChange: (String) -> Unit) {
+private fun SearchTopBar(query: String, onChange: (String) -> Unit, onClose: () -> Unit) {
     val focusManager = LocalFocusManager.current
-    OutlinedTextField(
-        value = query,
-        onValueChange = onChange,
-        placeholder = { Text("Search apps") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon = if (query.isNotEmpty()) {
-            { IconButton(onClick = { onChange("") }) { Icon(Icons.Default.Close, contentDescription = "Clear search") } }
-        } else {
-            null
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    TopAppBar(
+        navigationIcon = {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search") }
         },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        title = {
+            TextField(
+                value = query,
+                onValueChange = onChange,
+                placeholder = { Text("Search apps") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+        },
+        actions = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onChange("") }) { Icon(Icons.Default.Close, contentDescription = "Clear search") }
+            }
+        },
     )
 }
 
@@ -299,19 +336,19 @@ private fun AppItem(
 ) {
     val background = if (expanded) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest) else Modifier
     Column(background) {
-        Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(
                 Modifier.weight(1f).toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp))
+                Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp))
                 if (app.icon != null) {
-                    Image(app.icon, null, Modifier.size(36.dp))
+                    Image(app.icon, null, Modifier.size(32.dp))
                 } else {
-                    Spacer(Modifier.size(36.dp))
+                    Spacer(Modifier.size(32.dp))
                 }
                 Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)) {
-                    Text(app.label, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(app.label, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     val detail = listOfNotNull(
                         if (checked) (if (autoPlay) "Auto-play" else "Tap to play") else null,
                         lastNotified?.let(::relativeTime),
@@ -427,23 +464,11 @@ private fun spokenPartsLabel(parts: SpokenParts) = when (parts) {
 
 @Composable
 private fun PanelSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-        Column(Modifier.padding(bottom = 4.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 2.dp),
-            )
-            content()
-        }
-    }
+    SectionCard(title, color = MaterialTheme.colorScheme.surfaceContainerLowest, content = content)
 }
 
 @Composable
-private fun PanelDivider() {
-    HorizontalDivider(Modifier.padding(start = 48.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
-}
+private fun PanelDivider() = SectionDivider()
 
 @Composable
 private fun ModeOption(title: String, description: String, selected: Boolean, onClick: () -> Unit) {
@@ -467,18 +492,7 @@ private fun ModeOption(title: String, description: String, selected: Boolean, on
 
 @Composable
 private fun IconSwitchRow(icon: ImageVector, title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .heightIn(min = 44.dp)
-            .padding(start = 14.dp, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp))
-        Switch(checked = checked, onCheckedChange = null, modifier = Modifier.scale(0.8f))
-    }
+    CompactSwitchRow(icon, title, checked = checked, onChange = onChange)
 }
 
 /** A row showing the current choice; tapping it opens a menu of [options]. With no [title], the value is the label. */
