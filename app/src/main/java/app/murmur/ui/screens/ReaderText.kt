@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.window.PopupProperties
+import androidx.activity.compose.BackHandler
+import android.os.SystemClock
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Close
@@ -427,6 +430,25 @@ internal fun ReaderModeBar(
     val colors by settings.readingColors.collectAsStateWithLifecycle()
     val alignment by settings.readerAlignment.collectAsStateWithLifecycle()
     var openMenu by remember { mutableStateOf<String?>(null) }
+    // The menus don't take focus, so tapping another button in the bar while one is open reaches
+    // that button: the open menu closes and the tapped one opens. Tapping the open menu's own
+    // button closes it, so that tap must not reopen what the outside tap just closed.
+    var lastClosed by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    val current = openMenu ?: "more".takeIf { moreOpen }
+    fun close() {
+        current?.let { lastClosed = it to SystemClock.uptimeMillis() }
+        openMenu = null
+        onMoreOpenChange(false)
+    }
+    fun open(name: String) {
+        val justClosed = current == name ||
+            lastClosed?.let { (n, t) -> n == name && SystemClock.uptimeMillis() - t < 500 } == true
+        close()
+        if (justClosed) return
+        if (name == "more") onMoreOpenChange(true) else openMenu = name
+    }
+    BackHandler(enabled = current != null) { close() }
+    val menu = PopupProperties(focusable = false)
     val scheme = MaterialTheme.colorScheme
     val tonal = IconButtonDefaults.filledTonalIconButtonColors(
         containerColor = scheme.secondaryContainer,
@@ -434,21 +456,21 @@ internal fun ReaderModeBar(
     )
 
     Surface(
-        shape = RoundedCornerShape(percent = 50),
+        shape = RoundedCornerShape(28.dp),
         color = scheme.surfaceContainerHigh,
         shadowElevation = 6.dp,
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Close reader mode") }
-            Spacer(Modifier.width(4.dp))
 
             Box {
-                FilledTonalIconButton(onClick = { openMenu = "font" }, colors = tonal) { Icon(Icons.Default.TextFields, "Text") }
-                DropdownMenu(expanded = openMenu == "font", onDismissRequest = { openMenu = null }) {
+                FilledTonalIconButton(onClick = { open("font") }, colors = tonal) { Icon(Icons.Default.TextFields, "Text") }
+                DropdownMenu(expanded = openMenu == "font", onDismissRequest = ::close, properties = menu) {
                     // Text size first: it changes more often than the font.
                     Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { settings.setTextSize(size - 1) }, enabled = size > Settings.MIN_TEXT_SIZE) {
@@ -471,8 +493,8 @@ internal fun ReaderModeBar(
                 }
             }
             Box {
-                FilledTonalIconButton(onClick = { openMenu = "colors" }, colors = tonal) { Icon(Icons.Default.Palette, "Colors") }
-                DropdownMenu(expanded = openMenu == "colors", onDismissRequest = { openMenu = null }) {
+                FilledTonalIconButton(onClick = { open("colors") }, colors = tonal) { Icon(Icons.Default.Palette, "Colors") }
+                DropdownMenu(expanded = openMenu == "colors", onDismissRequest = ::close, properties = menu) {
                     ReadingColors.entries.forEach { choice ->
                         ChoiceItem(choice.label, choice == colors, leading = {
                             ColorSwatch(choice, 32.dp, selected = false)
@@ -481,10 +503,10 @@ internal fun ReaderModeBar(
                 }
             }
             Box {
-                FilledTonalIconButton(onClick = { openMenu = "spacing" }, colors = tonal) {
+                FilledTonalIconButton(onClick = { open("spacing") }, colors = tonal) {
                     Icon(Icons.Default.FormatLineSpacing, "Spacing")
                 }
-                DropdownMenu(expanded = openMenu == "spacing", onDismissRequest = { openMenu = null }) {
+                DropdownMenu(expanded = openMenu == "spacing", onDismissRequest = ::close, properties = menu) {
                     PictureChoices("Line spacing", LineSpacing.entries, spacing, { it.label }, settings::setLineSpacing) { l, color ->
                         LineSpacingPicture(l, color)
                     }
@@ -506,12 +528,11 @@ internal fun ReaderModeBar(
                     checkedContainerColor = scheme.primary,
                     checkedContentColor = scheme.onPrimary,
                 ),
-                modifier = Modifier.padding(start = 4.dp),
             ) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
 
             Box {
-                IconButton(onClick = { onMoreOpenChange(true) }) { Icon(Icons.Default.MoreVert, "More options") }
-                DropdownMenu(expanded = moreOpen, onDismissRequest = { onMoreOpenChange(false) }) { moreItems() }
+                IconButton(onClick = { open("more") }) { Icon(Icons.Default.MoreVert, "More options") }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = ::close, properties = menu) { moreItems() }
             }
         }
     }
