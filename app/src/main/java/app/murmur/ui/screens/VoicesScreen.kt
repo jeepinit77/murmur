@@ -111,6 +111,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
     var engineFilter by rememberSaveable { mutableStateOf<String?>(null) }
     // Voices can be deleted in Google's app while this screen is in the background.
     LifecycleResumeEffect(Unit) {
+        c.voices.activateAll()
         c.voices.refresh()
         onPauseOrDispose { }
     }
@@ -348,6 +349,7 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
     }
     var confirmDelete by remember { mutableStateOf<Download?>(null) }
     LifecycleResumeEffect(Unit) {
+        c.voices.activateAll()
         c.voices.refresh()
         onPauseOrDispose { }
     }

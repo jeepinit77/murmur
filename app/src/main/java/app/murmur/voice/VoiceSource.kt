@@ -61,8 +61,15 @@ sealed interface VoiceSource {
     /** Checks again which voices are installed, for example after returning from another app. */
     fun refresh() {}
 
-    /** Called once at startup; a source may wait for this before loading anything. */
+    /** Called before the source is used; a source may wait for this before loading anything. */
     fun activate() {}
+
+    /**
+     * True for a source that's costly to start (Google voices: ML Kit starts Google services and
+     * sends usage logs). It's activated only when one of its voices is selected, or when a screen
+     * that lists voices opens ([VoiceSources.activateAll]).
+     */
+    val startsOnDemand: Boolean get() = false
 
     /** Frees large resources such as loaded models. */
     fun release() {}

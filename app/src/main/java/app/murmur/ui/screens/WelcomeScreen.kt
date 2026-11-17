@@ -334,6 +334,7 @@ private fun VoicePage(chosen: String?, onChoose: (String) -> Unit) {
     val c = LocalContext.current.container
     val all by c.voices.voices.collectAsStateWithLifecycle()
     val installed by c.voices.installed.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { c.voices.activateAll() }
     val choices = remember(all) { voiceChoices(all) }
     fun isInstalled(choice: VoiceChoice) = choice.voices.any { it.id in installed }
     // Preselect a voice that's already downloaded, otherwise the small one.

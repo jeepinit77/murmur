@@ -24,7 +24,8 @@ class VoiceSources(
         .stateIn(scope, SharingStarted.Eagerly, sources.flatMap { it.installed.value }.toSet())
 
     init {
-        sources.forEach { it.activate() }
+        val selected = settings.voice.value
+        sources.filter { !it.startsOnDemand || selected?.startsWith("${it.id}:") == true }.forEach { it.activate() }
         // Keep a downloaded voice selected, so share-to-speak works right after the first download.
         scope.launch { installed.collect { ensureSelection(it) } }
         // Remember the user's choice per language, for articles in that language.
@@ -60,6 +61,9 @@ class VoiceSources(
     fun release() = sources.forEach { it.release() }
 
     fun refresh() = sources.forEach { it.refresh() }
+
+    /** Starts every source, including on-demand ones, for screens that list or download voices. */
+    fun activateAll() = sources.forEach { it.activate() }
 
     fun languageOf(voice: Voice): String = java.util.Locale.forLanguageTag(voice.language).language
 

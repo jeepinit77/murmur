@@ -77,10 +77,12 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
 
     private val activated = AtomicBoolean(false)
 
-    /** Loads the voice list the first time Google voices are turned on in Settings. */
+    override val startsOnDemand = true
+
+    /** Loads the voice list, off the main thread, the first time Google voices are needed. */
     override fun activate() {
         if (!activated.compareAndSet(false, true)) return
-        scope.launch {
+        scope.launch(Dispatchers.Default) {
             try {
                 load()
                 refreshStatus()
