@@ -275,8 +275,9 @@ private fun ReaderScreenBody(
         if (row > 0) listState.scrollToItem(row)
     }
 
-    // While reading, the sentence at the top of the screen becomes the place to continue from,
-    // for listening and in the library. Reaching the end marks the article as done.
+    // In reader mode, the sentence at the top of the screen becomes the place to continue from,
+    // for listening and in the library. Outside it, scrolling is only looking around: Play carries
+    // on where listening stopped. Reaching the end marks the article as done either way.
     val inPlayerNow by rememberUpdatedState(inPlayer != null)
     LaunchedEffect(layout, listening) {
         val l = layout ?: return@LaunchedEffect
@@ -290,12 +291,13 @@ private fun ReaderScreenBody(
             .distinctUntilChanged()
             .drop(1) // where the screen already was
             .collect { index ->
+                if (!listState.canScrollForward) c.library.setFinished(id, true)
+                if (!readerMode) return@collect
                 val saved = if (inPlayerNow) reader.state.value.currentIndex else c.library.progressOf(id)
                 if (l.second.getOrNull(saved) != l.second.getOrNull(index)) {
                     if (inPlayerNow) reader.seekTo(index) else c.library.setProgress(id, index)
                     movedByReading = true
                 }
-                if (!listState.canScrollForward) c.library.setFinished(id, true)
             }
     }
 

@@ -79,7 +79,7 @@ class PlaybackService : MediaSessionService() {
         )
         val s = MediaSession.Builder(this, player)
             .setSessionActivity(openPlayer)
-            .setCallback(MediaButtons.Callback(c.reader, c.settings))
+            .setCallback(MediaButtons.Callback(c.reader, c.settings, packageName))
             .build()
         session = s
         // Keep the Rewind and Speed buttons' icons in step with the settings.

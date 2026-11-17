@@ -1,7 +1,11 @@
 package app.murmur.playback
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
+import androidx.core.content.IntentCompat
 import androidx.annotation.OptIn
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
@@ -22,6 +26,9 @@ import kotlin.math.abs
 object MediaButtons {
     private const val ACTION_REWIND = "app.murmur.REWIND"
     private const val ACTION_SPEED = "app.murmur.SPEED"
+    /** The phone's lock screen and quick settings media controls. */
+    private const val SYSTEM_UI = "com.android.systemui"
+    private val PLAY_KEYS = setOf(KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK)
     private val rewindCommand = SessionCommand(ACTION_REWIND, Bundle.EMPTY)
     private val speedCommand = SessionCommand(ACTION_SPEED, Bundle.EMPTY)
 
@@ -65,7 +72,47 @@ object MediaButtons {
     }
 
     /** Lets controllers (including the system notification) use the two buttons. */
-    class Callback(private val reader: Reader, private val settings: Settings) : MediaSession.Callback {
+    class Callback(
+        private val reader: Reader,
+        private val settings: Settings,
+        private val ownPackage: String,
+    ) : MediaSession.Callback {
+        /**
+         * Headphones, car stereos and Android Auto often send Play when they connect. After a long
+         * pause that isn't the listener asking, so only Murmur itself and the phone's own media
+         * controls (lock screen, quick settings) can start playback again.
+         */
+        private fun ignorePlayFrom(packageName: String): Boolean =
+            packageName != ownPackage && packageName != SYSTEM_UI &&
+                !reader.state.value.playWhenReady && reader.idleMillis() > Reader.DEVICE_PLAY_LIMIT_MS
+
+        /** Media keys from headphones and Bluetooth devices arrive here, with the sender's package. */
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent,
+        ): Boolean {
+            val key = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            val isPlay = key?.keyCode in PLAY_KEYS
+            // Returning true marks the key as handled, so it's ignored.
+            if (isPlay && ignorePlayFrom(controllerInfo.packageName)) return true
+            return super.onMediaButtonEvent(session, controllerInfo, intent)
+        }
+
+        /** Play from other apps' controllers, such as Android Auto and Bluetooth transport controls. */
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onPlayerCommandRequest(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            playerCommand: Int,
+        ): Int {
+            if (playerCommand == Player.COMMAND_PLAY_PAUSE && ignorePlayFrom(controller.packageName)) {
+                return SessionError.ERROR_PERMISSION_DENIED
+            }
+            @Suppress("DEPRECATION")
+            return super.onPlayerCommandRequest(session, controller, playerCommand)
+        }
+
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(rewindCommand)

@@ -110,7 +110,7 @@ Make it easy to listen to a WhatsApp message or conversation.
 Settings → Notification reading. Off by default; needs notification access.
 - Apps appear in a list after they send a notification. Only checked apps are read; for other apps, only the package name is stored.
 - Murmur posts its own notification for each chat (or each notification from other apps) with Play and Dismiss. Messages that arrive close together are grouped ("Mom · 3 messages"), and the full message text is read, not just what's visible in the notification.
-- Playing pauses what's being read, reads the notification, then resumes at the same sentence. Notification text is kept in memory only and never saved to the library.
+- Playing pauses what's being read, reads the notification, then resumes at the same sentence. Pausing while a notification is read keeps the article paused afterward, even if more notifications are read. Notification text is kept in memory only and never saved to the library.
 - Auto-play (off by default), set per app. Each app has its own conditions: only with headphones or Bluetooth, respect Do Not Disturb, and a Screen choice (on, off, any time).
 - Murmur's notifications use normal importance, so they appear with other notifications rather than under Silent, but without their own sound or vibration.
 - Attachments in chats (voice messages, photos, videos, GIFs, stickers, documents, locations, contacts, polls) are recognized from WhatsApp's emoji labels or the attached file's type. Within a conversation they're named ("Voice message, 12 seconds.", "Photo: At the beach") instead of reading the emoji. A chat with only attachments and no captions gets no notification unless the app has Auto-play on; then it's announced ("WhatsApp. New voice message from Tim Jones."). Deleted messages are skipped.
@@ -123,7 +123,7 @@ Settings → Notification reading. Off by default; needs notification access.
 Articles can be read on screen as well as listened to, without getting in the way of listening.
 - **Open in Murmur** in the share menu popup opens an article straight into the reader.
 - Opening an article while something else plays doesn't interrupt it. The article opens for reading with the player bar hidden and a **Play** button that switches the player to it, starting from the top of the screen.
-- One place per article: scrolling while reading moves where listening would continue, and listening moves where reading continues. Scrolling to the end marks it as done.
+- One place per article: in reader mode, scrolling moves where listening would continue, and listening moves where reading continues. Outside reader mode, scrolling is only looking around, so Play carries on where listening stopped (tap a sentence to listen from there). Scrolling to the end marks it as done.
 - **Reader mode** (the Reader mode button in the top bar) opens the article on its own screen: full screen, with only a thin progress line at the bottom. It's for reading only: it has no player, and opening it pauses the article if it was playing. **Listen from here** in the ⋮ menu goes back to the article and reads aloud from the top of the screen. The phone's status and navigation bars stay hidden. Reader mode's own controls are floating bars, modeled on the DeepNotes reader. The top bar has Back, text size (− 100% +), and **Font**, **Colors** and **Spacing** menus. The ⋮ menu has Listen from here, Find in article and Chapters. Pinching also changes the text size. A tap shows or hides the bars and never starts listening, so getting ready to select text is safe. Scrolling down hides them again, scrolling up brings them back, and Back returns to the article at the place you reached.
 - While reading, the screen doesn't jump to follow the voice, and tapping text only starts listening when the article is the one in the player.
 - **Text settings** apply only in reader mode. You change them from reader mode's bar, or in Settings → Appearance → Reader mode. Outside reader mode, articles use the standard style. They include: colors (Match app, White, Gray, Sepia, Dark, Black, and Red, which is red text on black for reading at night), text size, font (Sans serif, Serif, Condensed, Monospace), line spacing, margins (Narrow, Normal, Wide), alignment (Left or Justified), and **Keep screen on** while reading (in Settings). In reader mode's bar, the Colors menu previews each choice as "Aa" in its own colors, and the Spacing menu shows line spacing, margins and alignment as small pictures.
@@ -152,6 +152,13 @@ Switch how the open article handles tables while listening, without changing the
 - Playback should stay at the same place in the article after switching.
 
 ## Playback
+
+### Unintended resuming — Done
+Playback sometimes started again when it wasn't wanted. Fixes:
+- **Devices:** after Murmur has been paused for 15 minutes, Play from headphones, car stereos, Android Auto and other apps is ignored. Murmur's own buttons and the phone's lock screen and notification media controls still work.
+- **Interruptions:** after a call or another app takes the audio, Murmur resumes only if the interruption was shorter than 2 minutes, and only the same article.
+- **Notifications:** pausing while a notification is read keeps the article paused afterward.
+- **Scrolling:** outside reader mode, scrolling no longer moves where listening continues.
 
 ### Speed slider from the notification — Planned
 Tapping the Speed button in the media notification opens a speed slider instead of moving to the next speed.

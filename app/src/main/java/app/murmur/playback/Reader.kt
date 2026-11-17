@@ -112,7 +112,11 @@ class Reader(
     @Volatile private var trackRate = 0
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private var focusRequest: AudioFocusRequest? = null
-    private var resumeOnFocusGain = false
+    /** The article to resume when another app gives audio focus back, and when it was paused. */
+    private var resumeOnFocusGain: FocusResume? = null
+    private class FocusResume(val docId: String, val pausedAt: Long)
+    /** When playback last stopped, for ignoring Play from headphones and cars after a long pause. */
+    @Volatile private var stoppedAt = 0L
     private var noisyRegistered = false
 
     // ---- Loading -------------------------------------------------------------------------
@@ -252,10 +256,19 @@ class Reader(
     }
 
     fun pause() {
+        if (_state.value.playWhenReady) stoppedAt = SystemClock.elapsedRealtime()
         _state.update { it.copy(playWhenReady = false, buffering = false) }
         stopAudio()
-        resumeOnFocusGain = false
+        resumeOnFocusGain = null
+        // Pausing while a notification is read means the article stays paused afterward too.
+        resumeAfter = resumeAfter?.let { Resume(it.docId, it.index, play = false) }
     }
+
+    /** How long nothing has been playing, in milliseconds; 0 while playing. */
+    fun idleMillis(): Long =
+        if (_state.value.playWhenReady) 0L
+        else if (stoppedAt == 0L) Long.MAX_VALUE
+        else SystemClock.elapsedRealtime() - stoppedAt
 
     fun toggle() = if (_state.value.playWhenReady) pause() else play()
 
@@ -484,6 +497,7 @@ class Reader(
             scope.launch { openFromLibrary(nextId, autoplay = true) }
             return
         }
+        stoppedAt = SystemClock.elapsedRealtime()
         _state.update { it.copy(playWhenReady = false, buffering = false, ended = true, currentIndex = 0) }
         unregisterNoisy()
         abandonFocus()
@@ -586,12 +600,20 @@ class Reader(
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                     // Speech is hard to follow when ducked, so pause briefly instead.
                     val wasPlaying = _state.value.playWhenReady
+                    val back = resumeAfter
                     pause()
-                    resumeOnFocusGain = wasPlaying
+                    // Not a pause by the listener, so notification reading still goes back afterward.
+                    resumeAfter = back
+                    val docId = _state.value.docId
+                    resumeOnFocusGain = if (wasPlaying && docId != null) FocusResume(docId, SystemClock.elapsedRealtime()) else null
                 }
-                AudioManager.AUDIOFOCUS_GAIN -> if (resumeOnFocusGain) {
-                    resumeOnFocusGain = false
-                    play()
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    val r = resumeOnFocusGain
+                    resumeOnFocusGain = null
+                    // Only after a short interruption, and only the article that was interrupted.
+                    if (r != null && r.docId == _state.value.docId &&
+                        SystemClock.elapsedRealtime() - r.pausedAt < FOCUS_RESUME_LIMIT_MS
+                    ) play()
                 }
             }
         }
@@ -644,6 +666,10 @@ class Reader(
         const val EPHEMERAL_PREFIX = "notif:"
         fun isEphemeral(docId: String) = docId.startsWith(EPHEMERAL_PREFIX)
         const val CHARS_PER_SECOND = 15f
+        /** After a call or other interruption longer than this, the article stays paused. */
+        private const val FOCUS_RESUME_LIMIT_MS = 2 * 60_000L
+        /** After being paused this long, Play from headphones, cars and other devices is ignored. */
+        const val DEVICE_PLAY_LIMIT_MS = 15 * 60_000L
         private const val LOOKAHEAD = 4
         private const val MAX_MODEL_SPEED = 1.6f
         private val RETRY_DELAYS_MS = longArrayOf(300, 800, 2000)
