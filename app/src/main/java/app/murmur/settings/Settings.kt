@@ -267,8 +267,22 @@ class Settings(context: Context) {
     private val _seenApps = MutableStateFlow(prefs.getStringSet(KEY_NR_SEEN, null).orEmpty().toSet())
     /** Apps that have posted a notification since access was granted (package names only). */
     val seenApps: StateFlow<Set<String>> = _seenApps.asStateFlow()
-    fun addSeenApp(pkg: String) {
+
+    private val _lastNotified = MutableStateFlow(
+        prefs.all.mapNotNull { (k, v) -> if (k.startsWith(KEY_NR_LAST) && v is Long) k.removePrefix(KEY_NR_LAST) to v else null }.toMap(),
+    )
+    /** When each app last posted a notification, in epoch milliseconds. Only the time is kept. */
+    val lastNotified: StateFlow<Map<String, Long>> = _lastNotified.asStateFlow()
+
+    /** Records that [pkg] posted a notification at [time]. */
+    fun addSeenApp(pkg: String, time: Long = System.currentTimeMillis()) {
         if (pkg !in _seenApps.value) putSet(KEY_NR_SEEN, _seenApps, pkg, true)
+        val last = _lastNotified.value[pkg] ?: 0L
+        // Busy apps post often; a minute's precision is enough for sorting and display.
+        if (time - last >= 60_000L) {
+            _lastNotified.value = _lastNotified.value + (pkg to time)
+            prefs.edit { putLong("$KEY_NR_LAST$pkg", time) }
+        }
     }
 
     private val _autoPlayRules = MutableStateFlow(
@@ -391,6 +405,7 @@ class Settings(context: Context) {
         private const val KEY_NR_APPS = "notification_reading_apps"
         private const val KEY_NR_AUTOPLAY_APPS = "notification_autoplay_apps"
         private const val KEY_NR_SEEN = "notification_seen_apps"
+        private const val KEY_NR_LAST = "notification_last_"
         /** Followed by a package name. */
         private const val KEY_NR_RULE = "notification_autoplay_rule_"
         private const val KEY_NR_TIP_DISMISSED = "notification_tip_dismissed"

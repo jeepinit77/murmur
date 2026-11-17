@@ -23,7 +23,7 @@ class NotificationReaderService : NotificationListenerService() {
             return
         }
         // List apps with notifications showing now, but don't read what was already there.
-        runCatching { activeNotifications }.getOrNull()?.forEach { if (readable(it)) container.settings.addSeenApp(it.packageName) }
+        runCatching { activeNotifications }.getOrNull()?.forEach { if (readable(it)) container.settings.addSeenApp(it.packageName, it.postTime) }
     }
 
     override fun onListenerDisconnected() {

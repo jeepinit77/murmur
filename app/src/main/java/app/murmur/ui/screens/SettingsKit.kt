@@ -46,12 +46,16 @@ import androidx.compose.ui.unit.dp
 /** Horizontal padding of every row inside a card. */
 private val ROW_PADDING = 16.dp
 
-/** A titled group of settings in one card. [note] explains the whole group, under its title. */
+/**
+ * A titled group of settings in one card. [note] explains the whole group, under its title.
+ * [header] goes between the note and the card, such as a search field.
+ */
 @Composable
 internal fun SettingsGroup(
     title: String? = null,
     note: String? = null,
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth()) {
@@ -71,6 +75,7 @@ internal fun SettingsGroup(
                 modifier = Modifier.padding(start = ROW_PADDING, end = ROW_PADDING, bottom = 8.dp),
             )
         }
+        header?.invoke()
         SettingsCard(content = content)
     }
 }
