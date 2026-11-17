@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,7 @@ import app.murmur.voice.DownloadState
 import app.murmur.voice.Gender
 import app.murmur.voice.PcmVoiceSource
 import app.murmur.voice.PlayingVoiceSource
+import app.murmur.voice.TransientSpeechException
 import app.murmur.voice.Voice
 import app.murmur.voice.VoicePackage
 import kotlinx.coroutines.CancellationException
@@ -104,6 +106,14 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
     var genderFilter by rememberSaveable { mutableStateOf<Gender?>(null) }
     var previewing by remember { mutableStateOf<String?>(null) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
+    // An article that was playing when a sample started; it plays again when this screen closes.
+    var pausedForPreview by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose {
+            previewJob?.cancel()
+            if (pausedForPreview) c.reader.play()
+        }
+    }
 
     val mine = all.filter { it.id in installed }
     // Two downloads can contain a voice with the same name (e.g. Bella); name the download then.
@@ -128,6 +138,10 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
         previewJob?.cancel()
         previewing = null
         if (stopOnly) return
+        if (c.reader.isBusy()) {
+            c.reader.pause()
+            pausedForPreview = true
+        }
         previewing = voice.id
         previewJob = scope.launch {
             try {
@@ -512,12 +526,27 @@ private fun localeName(tag: String): String {
 
 private val DIGITS = Regex("\\d+")
 
+private val PREVIEW_RETRY_DELAYS_MS = longArrayOf(300, 800, 2000)
+
 private const val PREVIEW_TEXT = "Hello! This is how I sound. I can read your articles, documents and books aloud."
 
 /** Speaks a sample sentence once, outside the reader and media session. Cancelling stops it. */
 private suspend fun preview(c: AppContainer, voice: Voice) {
     when (val source = c.voices.sourceOf(voice)) {
-        is PlayingVoiceSource -> source.speak(voice, PREVIEW_TEXT, c.settings.speed.value)
+        is PlayingVoiceSource -> {
+            // Google's engine often fails its first sentence after starting up; the reader retries
+            // the same way.
+            var attempt = 0
+            while (true) {
+                try {
+                    source.speak(voice, PREVIEW_TEXT, c.settings.speed.value)
+                    return
+                } catch (e: TransientSpeechException) {
+                    if (attempt >= PREVIEW_RETRY_DELAYS_MS.size) throw e
+                    delay(PREVIEW_RETRY_DELAYS_MS[attempt++])
+                }
+            }
+        }
         is PcmVoiceSource -> {
             val audio = source.synthesize(voice, PREVIEW_TEXT, c.settings.speed.value.coerceAtMost(1.6f))
             currentCoroutineContext().ensureActive()
