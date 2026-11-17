@@ -38,6 +38,8 @@ data class Voice(
     /** Relative start-up speed, e.g. "Fast"; empty when unremarkable. */
     val speed: String,
     val pkg: VoicePackage,
+    /** How the voice sounds, as its maker describes it ("Medium-high pitch"); empty when unknown. */
+    val sound: String = "",
 )
 
 /** Audio produced by a [PcmVoiceSource]. */
@@ -56,10 +58,7 @@ sealed interface VoiceSource {
     fun cancelDownload(pkg: VoicePackage)
     fun delete(pkg: VoicePackage)
 
-    /** True when the user has to turn this source on in Settings (Google voices). */
-    val requiresOptIn: Boolean get() = false
-
-    /** Called when the source is turned on; a source may wait for this before loading anything. */
+    /** Called once at startup; a source may wait for this before loading anything. */
     fun activate() {}
 
     /** Frees large resources such as loaded models. */

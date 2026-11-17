@@ -68,8 +68,6 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
     private val _installed = MutableStateFlow(prefs.getStringSet(KEY_INSTALLED, null).orEmpty().toSet())
     override val installed: StateFlow<Set<String>> = _installed.asStateFlow()
 
-    override val requiresOptIn = true
-
     private val activated = AtomicBoolean(false)
 
     /** Loads the voice list the first time Google voices are turned on in Settings. */
@@ -227,6 +225,7 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
             for (info in found) {
                 val voiceId = "$ID:${info.name}"
                 infos[voiceId] = info
+                val documented = DOCUMENTED[info.name.substringAfterLast("-x-")]
                 list += Voice(
                     id = voiceId,
                     sourceId = ID,
@@ -236,12 +235,13 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
                     gender = when (info.gender) {
                         VoiceInfo.Gender.FEMALE -> Gender.FEMALE
                         VoiceInfo.Gender.MALE -> Gender.MALE
-                        else -> null
+                        else -> documented?.first
                     },
                     quality = "",
                     qualityRank = 0,
                     speed = "Fast",
                     pkg = pkg,
+                    sound = documented?.second.orEmpty(),
                 )
             }
         }
@@ -318,6 +318,21 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
         private val LOCALES = listOf(
             "en-US", "en-GB", "ar-XA", "da-DK", "de-DE", "es-ES", "es-US", "fr-CA", "fr-FR", "hi-IN", "id-ID",
             "it-IT", "ja-JP", "ko-KR", "nb-NO", "nl-NL", "pl-PL", "pt-BR", "ru-RU", "sv-SE", "tr-TR",
+        )
+
+        /**
+         * Gender and pitch of each voice, as listed on ML Kit's Text-to-Speech page
+         * (developers.google.com/ml-kit/genai/text-to-speech/android). Google gives them no names.
+         */
+        private val DOCUMENTED = mapOf(
+            "star02" to (Gender.FEMALE to "Medium pitch"),
+            "star04" to (Gender.MALE to "Medium-high pitch"),
+            "star05" to (Gender.MALE to "Low pitch"),
+            "star08" to (Gender.FEMALE to "Low pitch"),
+            "star11" to (Gender.MALE to "Medium pitch, younger sound"),
+            "star12" to (Gender.FEMALE to "Medium-high pitch"),
+            "star13" to (Gender.MALE to "Medium pitch"),
+            "star16" to (Gender.FEMALE to "Medium-low pitch"),
         )
 
         /** "en-us-x-star02" -> "Google voice 2". */

@@ -99,15 +99,13 @@ class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE).also {
         // Left over from when Murmur was also a system TTS engine.
         it.edit { remove("system_voice") }
+        // Left over from when Google voices had to be turned on; they're now offered when available.
+        it.edit { remove("google_voices") }
     }
 
     private val _voice = MutableStateFlow(migrateVoiceId(prefs.getString(KEY_VOICE, null)))
     /** Id of the selected voice, e.g. "sherpa:kokoro-en-v0_19#1" or "mlkit:en-us-x-star02". */
     val voice: StateFlow<String?> = _voice.asStateFlow()
-
-    private val _googleVoices = MutableStateFlow(prefs.getBoolean(KEY_GOOGLE_VOICES, false))
-    /** Offer Google's voices (play build only). Off by default. */
-    val googleVoices: StateFlow<Boolean> = _googleVoices.asStateFlow()
 
     private val _speed = MutableStateFlow(prefs.getFloat(KEY_SPEED, 1.0f))
     val speed: StateFlow<Float> = _speed.asStateFlow()
@@ -348,11 +346,6 @@ class Settings(context: Context) {
         prefs.edit { putString(KEY_VOICE, id) }
     }
 
-    fun setGoogleVoices(on: Boolean) {
-        _googleVoices.value = on
-        prefs.edit { putBoolean(KEY_GOOGLE_VOICES, on) }
-    }
-
     fun setSpeed(s: Float) {
         val v = s.coerceIn(MIN_SPEED, MAX_SPEED)
         _speed.value = v
@@ -392,7 +385,6 @@ class Settings(context: Context) {
         const val MAX_SPEED = 3.0f
         private const val KEY_VOICE = "voice"
         private const val KEY_SPEED = "speed"
-        private const val KEY_GOOGLE_VOICES = "google_voices"
         private const val KEY_PARA_PAUSE = "paragraph_pause"
         private const val KEY_SHARE_MODE = "share_mode"
         private const val KEY_SAVED_PAGE = "saved_page_mode"

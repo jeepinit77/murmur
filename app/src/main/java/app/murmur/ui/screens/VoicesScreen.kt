@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,7 +76,12 @@ import app.murmur.voice.PcmVoiceSource
 import app.murmur.voice.PlayingVoiceSource
 import app.murmur.voice.Voice
 import app.murmur.voice.VoicePackage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -97,6 +103,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
 
     var genderFilter by rememberSaveable { mutableStateOf<Gender?>(null) }
     var previewing by remember { mutableStateOf<String?>(null) }
+    var previewJob by remember { mutableStateOf<Job?>(null) }
 
     val mine = all.filter { it.id in installed }
     // Two downloads can contain a voice with the same name (e.g. Bella); name the download then.
@@ -115,15 +122,22 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                 .thenBy { v -> v.name.replace(DIGITS) { it.value.padStart(4, '0') } },
         )
 
+    // Starting a preview stops the one playing; tapping the playing one again just stops it.
     fun preview(voice: Voice) {
+        val stopOnly = previewing == voice.id
+        previewJob?.cancel()
+        previewing = null
+        if (stopOnly) return
         previewing = voice.id
-        scope.launch {
+        previewJob = scope.launch {
             try {
                 preview(c, voice)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(context, e.message ?: "Preview failed", Toast.LENGTH_LONG).show()
             } finally {
-                previewing = null
+                if (previewing == voice.id) previewing = null
             }
         }
     }
@@ -141,7 +155,6 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                         }
                     }
                 }
-                if (c.voices.hasOptInSources) item(key = "google") { GoogleVoicesSetting() }
                 return@LazyColumn
             }
             if (mine.size > 3 && mine.any { it.gender != null }) {
@@ -163,12 +176,12 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                     voice = voice,
                     details = listOfNotNull(
                         voice.gender?.label,
+                        voice.sound.takeIf { it.isNotEmpty() },
                         localeName(voice.language),
                         voice.pkg.name.takeIf { voice.name in duplicateNames },
                     ).joinToString(" · "),
                     selected = voice.id == selected,
                     previewing = previewing == voice.id,
-                    canPreview = previewing == null,
                     shape = cardRowShape(i, shown.size),
                     divider = i > 0,
                     onSelect = {
@@ -181,24 +194,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
             item(key = "downloads") {
                 Box(Modifier.padding(SCREEN_PADDING)) { DownloadVoicesButton(onDownloads) }
             }
-            if (c.voices.hasOptInSources) item(key = "google") { GoogleVoicesSetting() }
         }
-    }
-}
-
-/** Lists voices from Google's speech app here too, on phones that have it. */
-@Composable
-private fun GoogleVoicesSetting() {
-    val c = LocalContext.current.container
-    val on by c.settings.googleVoices.collectAsStateWithLifecycle()
-    SettingsCard(Modifier.padding(horizontal = SCREEN_PADDING)) {
-        SwitchRow(
-            title = "Google voices",
-            description = "Add voices from Google's Speech Recognition & Synthesis app to this list. " +
-                "On some phones, every Google voice sounds the same.",
-            checked = on,
-            onChange = { c.settings.setGoogleVoices(it) },
-        )
     }
 }
 
@@ -221,7 +217,6 @@ private fun VoiceRow(
     details: String,
     selected: Boolean,
     previewing: Boolean,
-    canPreview: Boolean,
     shape: Shape,
     divider: Boolean,
     onSelect: () -> Unit,
@@ -271,7 +266,6 @@ private fun VoiceRow(
             }
             FilledTonalIconButton(
                 onClick = onPreview,
-                enabled = canPreview,
                 modifier = Modifier.size(36.dp),
                 colors = if (selected) {
                     IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.surface, contentColor = colors.onSurface)
@@ -279,7 +273,7 @@ private fun VoiceRow(
                     IconButtonDefaults.filledTonalIconButtonColors()
                 },
             ) {
-                if (previewing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (previewing) Icon(Icons.Filled.Stop, contentDescription = "Stop preview", modifier = Modifier.size(20.dp))
                 else Icon(Icons.Filled.PlayArrow, contentDescription = "Preview ${voice.name}", modifier = Modifier.size(20.dp))
             }
         }
@@ -520,13 +514,15 @@ private val DIGITS = Regex("\\d+")
 
 private const val PREVIEW_TEXT = "Hello! This is how I sound. I can read your articles, documents and books aloud."
 
-/** Speaks a sample sentence once, outside the reader and media session. */
+/** Speaks a sample sentence once, outside the reader and media session. Cancelling stops it. */
 private suspend fun preview(c: AppContainer, voice: Voice) {
     when (val source = c.voices.sourceOf(voice)) {
         is PlayingVoiceSource -> source.speak(voice, PREVIEW_TEXT, c.settings.speed.value)
         is PcmVoiceSource -> {
             val audio = source.synthesize(voice, PREVIEW_TEXT, c.settings.speed.value.coerceAtMost(1.6f))
-            withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
+            // Built here rather than on another dispatcher, so a cancel can't leave it playing unseen.
+            run {
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -542,8 +538,9 @@ private suspend fun preview(c: AppContainer, voice: Voice) {
                 try {
                     track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
                     track.play()
-                    Thread.sleep(audio.samples.size * 1000L / audio.sampleRate + 200)
+                    delay(audio.samples.size * 1000L / audio.sampleRate + 200)
                 } finally {
+                    runCatching { track.stop() }
                     track.release()
                 }
             }
