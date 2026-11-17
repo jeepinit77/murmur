@@ -71,8 +71,10 @@ data class ReadingRule(
     /** Don't auto-play while the ringer is set to vibrate. */
     val respectVibrate: Boolean = false,
     val parts: SpokenParts = SpokenParts.APP_SENDER_AND_MESSAGE,
+    /** Play a short sound before reading automatically. */
+    val alertSound: Boolean = true,
 ) {
-    fun encode() = "$headphonesOnly;$respectDnd;${screen.name};$respectSilent;$respectVibrate;${parts.name}"
+    fun encode() = "$headphonesOnly;$respectDnd;${screen.name};$respectSilent;$respectVibrate;${parts.name};$alertSound"
 
     companion object {
         fun decode(s: String?): ReadingRule {
@@ -86,6 +88,7 @@ data class ReadingRule(
                 respectSilent = p.getOrNull(3)?.toBooleanStrictOrNull() ?: dnd,
                 respectVibrate = p.getOrNull(4)?.toBooleanStrictOrNull() ?: dnd,
                 parts = runCatching { SpokenParts.valueOf(p.getOrNull(5) ?: "") }.getOrDefault(SpokenParts.APP_SENDER_AND_MESSAGE),
+                alertSound = p.getOrNull(6)?.toBooleanStrictOrNull() ?: true,
             )
         }
     }

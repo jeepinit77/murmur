@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.min
@@ -21,7 +22,8 @@ import kotlin.random.Random
 /**
  * Quiet audio feedback for the share path, where there is often nothing on screen:
  * a soft ambient tone while the first audio is being prepared, and a short falling
- * two-note sound when reading can't start.
+ * two-note sound when reading can't start. Also the rising alert played before a notification
+ * is read automatically.
  *
  * Driven entirely by [Reader.state], so it plays for the initial start, a seek or a
  * restart, and never between sentences (buffering only goes true when a play loop starts).
@@ -57,6 +59,12 @@ class SoundCues(private val reader: Reader, private val settings: Settings, priv
         scope.launch(Dispatchers.Default) {
             runCatching { playErrorTone() }.onFailure { Log.w(TAG, "Error sound failed", it) }
         }
+    }
+
+    /** Plays the alert before a notification is read automatically, and returns when it has finished. */
+    suspend fun playAlert() = withContext(Dispatchers.Default) {
+        runCatching { playNotes(listOf(783.99, 1046.5), ALERT_VOLUME) }.onFailure { Log.w(TAG, "Alert sound failed", it) }
+        Unit
     }
 
     private fun startAmbience() {
@@ -169,21 +177,23 @@ class SoundCues(private val reader: Reader, private val settings: Settings, priv
     }
 
     /** Two soft notes falling a major third (E5 to C5). */
-    private fun playErrorTone() {
+    private fun playErrorTone() = playNotes(listOf(659.25, 523.25), ERROR_VOLUME)
+
+    /** Short soft notes in sequence (the error tone falls, the alert rises a fourth, G5 to C6). */
+    private fun playNotes(frequencies: List<Double>, volume: Double) {
         val noteLen = (RATE * 0.17).toInt()
         val gap = (RATE * 0.03).toInt()
-        val samples = FloatArray(noteLen * 2 + gap + RATE / 10)
+        val samples = FloatArray(noteLen * frequencies.size + gap * (frequencies.size - 1) + RATE / 10)
         fun note(start: Int, f: Double) {
             for (i in 0 until noteLen) {
                 val t = i / RATE.toDouble()
                 val attack = min(1.0, t / 0.012)
                 val env = attack * exp(-t * 9.0)
                 val v = sin(2 * PI * f * t) + 0.25 * sin(2 * PI * 2 * f * t)
-                samples[start + i] += (v * env * ERROR_VOLUME).toFloat()
+                samples[start + i] += (v * env * volume).toFloat()
             }
         }
-        note(0, 659.25)
-        note(noteLen + gap, 523.25)
+        frequencies.forEachIndexed { i, f -> note(i * (noteLen + gap), f) }
         val track = AudioTrack.Builder()
             .setAudioAttributes(attributes())
             .setAudioFormat(format())
@@ -207,5 +217,6 @@ class SoundCues(private val reader: Reader, private val settings: Settings, priv
         private const val FADE_OUT_S = 0.12f
         private const val VOLUME = 0.11
         private const val ERROR_VOLUME = 0.22
+        private const val ALERT_VOLUME = 0.2
     }
 }

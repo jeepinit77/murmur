@@ -115,7 +115,7 @@ class AppContainer(context: Context) {
     /** Loading and error sounds, driven by the reader's state. */
     val cues = SoundCues(reader, settings, appScope).also { it.start() }
     /** Notifications from other apps waiting to be read; kept in memory only. */
-    val notificationInbox = NotificationInbox(context, settings, voices, reader, appScope)
+    val notificationInbox = NotificationInbox(context, settings, voices, reader, cues, appScope)
     /** Set when the app is opened from the playback notification; the player opens expanded and clears it. */
     val playerExpandRequest = MutableStateFlow(false)
 }

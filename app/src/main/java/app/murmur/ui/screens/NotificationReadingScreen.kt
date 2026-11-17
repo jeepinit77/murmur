@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Vibration
@@ -67,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -331,8 +334,8 @@ private fun AppItem(
         }
         if (expanded) {
             Column(
-                Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) { settings() }
         }
     }
@@ -358,19 +361,23 @@ private fun AppSettings(
     PanelSection("Reading behavior") {
         ModeOption(
             title = "Auto-play when allowed",
-            description = "Read notifications as soon as they arrive when the conditions below are met. Otherwise, show a notification with a Play button.",
+            description = "Read when the conditions below are met. Otherwise, show a Play button.",
             selected = autoPlay,
             onClick = { onAutoPlayChange(true) },
         )
         ModeOption(
             title = "Tap to play only",
-            description = "Never read automatically. Show a notification with a Play button.",
+            description = "Never read automatically. Show a Play button.",
             selected = !autoPlay,
             onClick = { onAutoPlayChange(false) },
         )
     }
     if (autoPlay) {
-        PanelSection("Auto-play when") {
+        PanelSection("Auto-play") {
+            IconSwitchRow(Icons.Outlined.NotificationsActive, "Play a sound before reading", rule.alertSound) {
+                onRuleChange(rule.copy(alertSound = it))
+            }
+            PanelDivider()
             IconSwitchRow(Icons.Outlined.Headphones, "Only with headphones or Bluetooth", rule.headphonesOnly) {
                 onRuleChange(rule.copy(headphonesOnly = it))
             }
@@ -379,8 +386,8 @@ private fun AppSettings(
                 icon = Icons.Outlined.Smartphone,
                 title = "Screen",
                 value = when (rule.screen) {
-                    AutoPlayScreen.SCREEN_ON -> "When on"
-                    AutoPlayScreen.SCREEN_OFF -> "When off"
+                    AutoPlayScreen.SCREEN_ON -> "Only when on"
+                    AutoPlayScreen.SCREEN_OFF -> "Only when off"
                     AutoPlayScreen.ANY -> "Any time"
                 },
                 options = listOf(
@@ -420,13 +427,13 @@ private fun spokenPartsLabel(parts: SpokenParts) = when (parts) {
 
 @Composable
 private fun PanelSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-        Column(Modifier.padding(bottom = 6.dp)) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+        Column(Modifier.padding(bottom = 4.dp)) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 2.dp),
             )
             content()
         }
@@ -435,24 +442,24 @@ private fun PanelSection(title: String, content: @Composable ColumnScope.() -> U
 
 @Composable
 private fun PanelDivider() {
-    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(Modifier.padding(start = 48.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
 private fun ModeOption(title: String, description: String, selected: Boolean, onClick: () -> Unit) {
-    val highlight = if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp)) else Modifier
+    val highlight = if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(10.dp)) else Modifier
     Row(
         Modifier
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 1.dp)
             .fillMaxWidth()
             .then(highlight)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(end = 12.dp, top = 8.dp, bottom = 8.dp),
+            .padding(end = 10.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(horizontal = 12.dp))
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(start = 8.dp, end = 10.dp).size(20.dp))
         Column {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -464,12 +471,13 @@ private fun IconSwitchRow(icon: ImageVector, title: String, checked: Boolean, on
         Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .heightIn(min = 44.dp)
+            .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(horizontal = 16.dp))
-        Switch(checked = checked, onCheckedChange = null)
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp))
+        Switch(checked = checked, onCheckedChange = null, modifier = Modifier.scale(0.8f))
     }
 }
 
@@ -489,15 +497,16 @@ private fun <T> IconMenuRow(
             Modifier
                 .fillMaxWidth()
                 .clickable { open = true }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .heightIn(min = 44.dp)
+                .padding(start = 14.dp, end = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(title ?: value, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(horizontal = 16.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Text(title ?: value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 14.dp))
             if (title != null) {
                 Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
+            Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.padding(start = 4.dp).size(20.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (label, option) ->

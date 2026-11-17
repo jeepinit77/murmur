@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.murmur.playback.PlaybackService
 import app.murmur.playback.Reader
+import app.murmur.playback.SoundCues
 import app.murmur.settings.Settings
 import app.murmur.text.Document
 import app.murmur.voice.VoiceSources
@@ -21,6 +22,7 @@ class NotificationInbox(
     private val settings: Settings,
     private val voices: VoiceSources,
     private val reader: Reader,
+    private val cues: SoundCues,
     private val scope: CoroutineScope,
 ) {
     private val batcher = NotificationBatcher()
@@ -42,7 +44,9 @@ class NotificationInbox(
                 delay(AUTO_PLAY_DELAY_MS)
                 autoPlayJobs.remove(batch.id)
                 if (batcher.get(batch.id) != null && voices.hasAnyInstalled() && policy.allows(batch.packageName)) {
-                    autoPlay(batch.id)
+                    if (settings.readingRule(batch.packageName).alertSound) cues.playAlert()
+                    // The batch may have been played or dismissed during the alert.
+                    if (batcher.get(batch.id) != null) autoPlay(batch.id)
                 }
             }
         }
