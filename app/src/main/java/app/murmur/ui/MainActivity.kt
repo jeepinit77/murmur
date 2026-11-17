@@ -12,9 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavBackStackEntry
 import androidx.compose.runtime.snapshotFlow
@@ -51,8 +49,6 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.toReaderMode() =
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.fromReaderMode() =
     initialState.destination.route?.startsWith(MainActivity.ROUTE_READER_MODE) == true
-
-private const val READER_MODE_FADE_MS = 220
 
 class MainActivity : ComponentActivity() {
 
@@ -97,8 +93,8 @@ class MainActivity : ComponentActivity() {
                     composable(
                         "$ROUTE_READER/{id}?find={find}",
                         arguments = listOf(navArgument("find") { type = NavType.StringType; nullable = true; defaultValue = null }),
-                        exitTransition = { if (toReaderMode()) fadeOut(tween(READER_MODE_FADE_MS)) else null },
-                        popEnterTransition = { if (fromReaderMode()) fadeIn(tween(READER_MODE_FADE_MS)) else null },
+                        exitTransition = { if (toReaderMode()) slideOutOfContainer(SlideDirection.Start) { it / 4 } else null },
+                        popEnterTransition = { if (fromReaderMode()) slideIntoContainer(SlideDirection.End) { it / 4 } else null },
                     ) { entry ->
                         ReaderScreen(
                             docId = entry.arguments?.getString("id"),
@@ -109,12 +105,12 @@ class MainActivity : ComponentActivity() {
                             onSettings = { nav.navigate(ROUTE_SETTINGS) },
                         )
                     }
-                    // Reader mode fades in and out over the article: a different view of the same
-                    // article, not a new screen.
+                    // Reader mode slides in from the side and back out. (A crossfade looked like a
+                    // jump, since reader mode also hides the system bars.)
                     composable(
                         "$ROUTE_READER_MODE/{id}",
-                        enterTransition = { fadeIn(tween(READER_MODE_FADE_MS)) },
-                        popExitTransition = { fadeOut(tween(READER_MODE_FADE_MS)) },
+                        enterTransition = { slideIntoContainer(SlideDirection.Start) },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End) },
                     ) { entry ->
                         ReaderScreen(
                             docId = entry.arguments?.getString("id"),
@@ -126,8 +122,8 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(
                         ROUTE_NOW_PLAYING,
-                        exitTransition = { if (toReaderMode()) fadeOut(tween(READER_MODE_FADE_MS)) else null },
-                        popEnterTransition = { if (fromReaderMode()) fadeIn(tween(READER_MODE_FADE_MS)) else null },
+                        exitTransition = { if (toReaderMode()) slideOutOfContainer(SlideDirection.Start) { it / 4 } else null },
+                        popEnterTransition = { if (fromReaderMode()) slideIntoContainer(SlideDirection.End) { it / 4 } else null },
                     ) {
                         ReaderScreen(
                             docId = null,
