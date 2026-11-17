@@ -2,6 +2,7 @@ package app.murmur.settings
 
 import android.content.Context
 import androidx.core.content.edit
+import app.murmur.notifications.SpokenParts
 import app.murmur.ui.theme.Palette
 import app.murmur.ui.theme.ThemeMode
 import app.murmur.web.CodeMode
@@ -56,21 +57,35 @@ enum class ReaderMargins(val label: String, val dp: Int) {
 /** When notifications may be read automatically, depending on the screen. */
 enum class AutoPlayScreen { SCREEN_ON, SCREEN_OFF, ANY }
 
-/** One app's conditions for reading its notifications automatically. */
-data class AutoPlayRule(
+/**
+ * How one app's notifications are read: what's read aloud, and the conditions for reading them
+ * automatically when the app has auto-play on.
+ */
+data class ReadingRule(
     val headphonesOnly: Boolean = false,
+    /** Don't auto-play while Do Not Disturb is on. */
     val respectDnd: Boolean = true,
     val screen: AutoPlayScreen = AutoPlayScreen.SCREEN_ON,
+    /** Don't auto-play while the ringer is set to silent. */
+    val respectSilent: Boolean = true,
+    /** Don't auto-play while the ringer is set to vibrate. */
+    val respectVibrate: Boolean = false,
+    val parts: SpokenParts = SpokenParts.APP_SENDER_AND_MESSAGE,
 ) {
-    fun encode() = "$headphonesOnly;$respectDnd;${screen.name}"
+    fun encode() = "$headphonesOnly;$respectDnd;${screen.name};$respectSilent;$respectVibrate;${parts.name}"
 
     companion object {
-        fun decode(s: String?): AutoPlayRule {
-            val p = s?.split(';') ?: return AutoPlayRule()
-            return AutoPlayRule(
+        fun decode(s: String?): ReadingRule {
+            val p = s?.split(';') ?: return ReadingRule()
+            val dnd = p.getOrNull(1)?.toBooleanStrictOrNull() ?: true
+            return ReadingRule(
                 headphonesOnly = p.getOrNull(0)?.toBooleanStrictOrNull() ?: false,
-                respectDnd = p.getOrNull(1)?.toBooleanStrictOrNull() ?: true,
+                respectDnd = dnd,
                 screen = runCatching { AutoPlayScreen.valueOf(p.getOrNull(2) ?: "") }.getOrDefault(AutoPlayScreen.SCREEN_ON),
+                // Rules saved before these were separate had one switch for all three modes.
+                respectSilent = p.getOrNull(3)?.toBooleanStrictOrNull() ?: dnd,
+                respectVibrate = p.getOrNull(4)?.toBooleanStrictOrNull() ?: dnd,
+                parts = runCatching { SpokenParts.valueOf(p.getOrNull(5) ?: "") }.getOrDefault(SpokenParts.APP_SENDER_AND_MESSAGE),
             )
         }
     }
@@ -254,14 +269,17 @@ class Settings(context: Context) {
     private val _readApps = MutableStateFlow(prefs.getStringSet(KEY_NR_APPS, null).orEmpty().toSet())
     /** Package names of the apps whose notifications Murmur reads. */
     val readApps: StateFlow<Set<String>> = _readApps.asStateFlow()
-    fun setReadApp(pkg: String, on: Boolean) = putSet(KEY_NR_APPS, _readApps, pkg, on)
+    fun setReadApp(pkg: String, on: Boolean) {
+        putSet(KEY_NR_APPS, _readApps, pkg, on)
+        if (on && pkg !in _readingRules.value) _readingRules.value = _readingRules.value + (pkg to readingRule(pkg))
+    }
 
     private val _autoPlayApps = MutableStateFlow(prefs.getStringSet(KEY_NR_AUTOPLAY_APPS, null).orEmpty().toSet())
     /** Package names of the apps whose notifications are read as soon as they arrive. */
     val autoPlayApps: StateFlow<Set<String>> = _autoPlayApps.asStateFlow()
     fun setAutoPlayApp(pkg: String, on: Boolean) {
         putSet(KEY_NR_AUTOPLAY_APPS, _autoPlayApps, pkg, on)
-        if (on && pkg !in _autoPlayRules.value) _autoPlayRules.value = _autoPlayRules.value + (pkg to autoPlayRule(pkg))
+        if (on && pkg !in _readingRules.value) _readingRules.value = _readingRules.value + (pkg to readingRule(pkg))
     }
 
     private val _seenApps = MutableStateFlow(prefs.getStringSet(KEY_NR_SEEN, null).orEmpty().toSet())
@@ -285,16 +303,16 @@ class Settings(context: Context) {
         }
     }
 
-    private val _autoPlayRules = MutableStateFlow(
-        _autoPlayApps.value.associateWith { AutoPlayRule.decode(prefs.getString("$KEY_NR_RULE$it", null)) },
+    private val _readingRules = MutableStateFlow(
+        (_readApps.value + _autoPlayApps.value).associateWith { ReadingRule.decode(prefs.getString("$KEY_NR_RULE$it", null)) },
     )
-    /** When each app's notifications may be read automatically; only for apps in [autoPlayApps]. */
-    val autoPlayRules: StateFlow<Map<String, AutoPlayRule>> = _autoPlayRules.asStateFlow()
+    /** How each app in [readApps] is read. */
+    val readingRules: StateFlow<Map<String, ReadingRule>> = _readingRules.asStateFlow()
 
-    fun autoPlayRule(pkg: String): AutoPlayRule = _autoPlayRules.value[pkg] ?: AutoPlayRule.decode(prefs.getString("$KEY_NR_RULE$pkg", null))
+    fun readingRule(pkg: String): ReadingRule = _readingRules.value[pkg] ?: ReadingRule.decode(prefs.getString("$KEY_NR_RULE$pkg", null))
 
-    fun setAutoPlayRule(pkg: String, rule: AutoPlayRule) {
-        _autoPlayRules.value = _autoPlayRules.value + (pkg to rule)
+    fun setReadingRule(pkg: String, rule: ReadingRule) {
+        _readingRules.value = _readingRules.value + (pkg to rule)
         prefs.edit { putString("$KEY_NR_RULE$pkg", rule.encode()) }
     }
 

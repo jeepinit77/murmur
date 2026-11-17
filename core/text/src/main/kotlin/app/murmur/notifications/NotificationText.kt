@@ -42,6 +42,16 @@ data class IncomingNotification(
     val isConversation: Boolean get() = messages.isNotEmpty()
 }
 
+/** How much of a notification Murmur reads aloud, chosen for each app. */
+enum class SpokenParts {
+    /** Only the message, or a notification's text. */
+    MESSAGE,
+    /** Who sent it (or a notification's title), then the message. */
+    SENDER_AND_MESSAGE,
+    /** The app's name, who sent it, then the message. */
+    APP_SENDER_AND_MESSAGE,
+}
+
 /** Unheard notifications from one chat, or one notification from a non-messaging app. */
 data class NotificationBatch(
     /** Stable for the life of the process; used for Murmur's notification id. */
@@ -78,30 +88,36 @@ data class NotificationBatch(
         }
 
     /** The text Murmur reads aloud, as a one-chapter document. */
-    fun toDocument(): Document = Document(
+    fun toDocument(parts: SpokenParts = SpokenParts.APP_SENDER_AND_MESSAGE): Document = Document(
         title = if (isConversation && messages.size > 1) "$heading · ${messages.size} messages" else heading,
-        chapters = listOf(Chapter(title = null, paragraphs = spokenParagraphs())),
+        chapters = listOf(Chapter(title = null, paragraphs = spokenParagraphs(parts))),
     )
 
-    fun spokenParagraphs(): List<String> {
+    fun spokenParagraphs(parts: SpokenParts = SpokenParts.APP_SENDER_AND_MESSAGE): List<String> {
+        val withApp = parts == SpokenParts.APP_SENDER_AND_MESSAGE
+        val withSender = parts != SpokenParts.MESSAGE
         val out = mutableListOf<String>()
         if (nothingToRead) {
-            out += attachmentAnnouncement()
+            out += attachmentAnnouncement(withApp, withSender)
         } else if (isConversation) {
             val count = if (messages.size > 1) ", ${messages.size} messages" else ""
-            out += sentence("$appName. $heading$count")
+            when {
+                withApp -> out += sentence("$appName. $heading$count")
+                withSender -> out += sentence("$heading$count")
+            }
             var lastSender: String? = null
             messages.forEach { m ->
                 // In group chats, say who is speaking whenever it changes.
                 val text = MessageKinds.spoken(m)
-                out += if (isGroup && m.sender != null && m.sender != lastSender) "${m.sender}: $text" else text
+                out += if (withSender && isGroup && m.sender != null && m.sender != lastSender) "${m.sender}: $text" else text
                 lastSender = m.sender
             }
         } else {
-            out += sentence(appName)
+            if (withApp) out += sentence(appName)
             val t = title?.trim()
             val b = body?.trim()
-            if (!t.isNullOrEmpty() && (b == null || !b.startsWith(t))) out += sentence(t)
+            // With the message only, the title is read only when there's no text.
+            if (!t.isNullOrEmpty() && (b == null || !b.startsWith(t)) && (withSender || b.isNullOrEmpty())) out += sentence(t)
             if (!b.isNullOrEmpty()) out += b.split(Regex("\n\\s*\n")).map { it.trim() }.filter { it.isNotEmpty() }
         }
         return out
@@ -111,19 +127,20 @@ data class NotificationBatch(
      * "WhatsApp. New voice message from Tim Jones.", "WhatsApp. 3 new photos in Family." or
      * "WhatsApp. New messages from Tim Jones: 2 photos and a sticker."
      */
-    private fun attachmentAnnouncement(): String {
-        val from = messages.mapNotNull { it.sender }.distinct().singleOrNull()?.let { " from $it" }.orEmpty()
-        val where = if (isGroup) (conversationTitle ?: title)?.let { " in $it" }.orEmpty() else ""
+    private fun attachmentAnnouncement(withApp: Boolean, withSender: Boolean): String {
+        val app = if (withApp) "$appName. " else ""
+        val from = if (!withSender) "" else messages.mapNotNull { it.sender }.distinct().singleOrNull()?.let { " from $it" }.orEmpty()
+        val where = if (withSender && isGroup) (conversationTitle ?: title)?.let { " in $it" }.orEmpty() else ""
         val kinds = messages.groupingBy { it.kind }.eachCount()
         val what = when {
             kinds.size > 1 -> {
                 val parts = kinds.map { (kind, n) -> MessageKinds.count(n, kind) }
-                return "$appName. New messages$from$where: ${parts.dropLast(1).joinToString(", ")} and ${parts.last()}."
+                return "${app}New messages$from$where: ${parts.dropLast(1).joinToString(", ")} and ${parts.last()}."
             }
             messages.size == 1 -> "New ${messages.single().kind.label}"
             else -> "${messages.size} new ${messages.first().kind.plural}"
         }
-        return "$appName. $what$from$where."
+        return "$app$what$from$where."
     }
 
     private fun sentence(s: String) = if (s.endsWith('.') || s.endsWith('!') || s.endsWith('?')) s else "$s."

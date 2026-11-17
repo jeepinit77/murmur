@@ -79,6 +79,32 @@ class NotificationBatcherTest {
         assertEquals("Family · 3 messages", batch.toDocument().title)
     }
 
+    @Test fun spokenPartsLeaveOutTheAppAndSender() {
+        val b = NotificationBatcher()
+        val group = b.offer(chat(IncomingMessage("Mom", "Dinner at 6", 1), IncomingMessage("Dad", "I'll cook", 2), group = true, title = "Family"))!!
+        assertEquals(
+            listOf("Family, 2 messages.", "Mom: Dinner at 6", "Dad: I'll cook"),
+            group.spokenParagraphs(SpokenParts.SENDER_AND_MESSAGE),
+        )
+        assertEquals(listOf("Dinner at 6", "I'll cook"), group.spokenParagraphs(SpokenParts.MESSAGE))
+
+        val mail = b.offer(
+            IncomingNotification(
+                packageName = "com.example.mail", appName = "Mail", sourceKey = "k2", conversationKey = "k2",
+                title = "Invoice ready", body = "Your invoice is ready.",
+            ),
+        )!!
+        assertEquals(listOf("Invoice ready.", "Your invoice is ready."), mail.spokenParagraphs(SpokenParts.SENDER_AND_MESSAGE))
+        assertEquals(listOf("Your invoice is ready."), mail.spokenParagraphs(SpokenParts.MESSAGE))
+
+        val titleOnly = b.offer(
+            IncomingNotification(
+                packageName = "com.example.alarm", appName = "Clock", sourceKey = "k3", conversationKey = "k3", title = "Alarm",
+            ),
+        )!!
+        assertEquals(listOf("Alarm."), titleOnly.spokenParagraphs(SpokenParts.MESSAGE))
+    }
+
     @Test fun singleMessageReadsWithoutCount() {
         val b = NotificationBatcher()
         val batch = b.offer(chat(m1))!!

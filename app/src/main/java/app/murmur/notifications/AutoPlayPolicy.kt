@@ -14,9 +14,12 @@ class AutoPlayPolicy(private val context: Context, private val settings: Setting
 
     fun allows(pkg: String): Boolean {
         if (pkg !in settings.autoPlayApps.value) return false
-        val rule = settings.autoPlayRule(pkg)
+        val rule = settings.readingRule(pkg)
         if (rule.headphonesOnly && !privateAudio()) return false
-        if (rule.respectDnd && quiet()) return false
+        if (rule.respectDnd && doNotDisturb()) return false
+        val ringer = context.getSystemService(AudioManager::class.java).ringerMode
+        if (rule.respectSilent && ringer == AudioManager.RINGER_MODE_SILENT) return false
+        if (rule.respectVibrate && ringer == AudioManager.RINGER_MODE_VIBRATE) return false
         val screenOn = context.getSystemService(PowerManager::class.java).isInteractive
         return when (rule.screen) {
             AutoPlayScreen.SCREEN_ON -> screenOn
@@ -25,13 +28,8 @@ class AutoPlayPolicy(private val context: Context, private val settings: Setting
         }
     }
 
-    /** Do Not Disturb, silent or vibrate. */
-    private fun quiet(): Boolean {
-        val nm = context.getSystemService(NotificationManager::class.java)
-        val audio = context.getSystemService(AudioManager::class.java)
-        return nm.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL ||
-            audio.ringerMode != AudioManager.RINGER_MODE_NORMAL
-    }
+    private fun doNotDisturb(): Boolean =
+        context.getSystemService(NotificationManager::class.java).currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
 
     /** Headphones, a Bluetooth device (including car audio) or a hearing aid is connected. */
     private fun privateAudio(): Boolean {

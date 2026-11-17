@@ -56,7 +56,7 @@ class NotificationInbox(
     fun take(id: Int): Pair<String, Document>? {
         val batch = batcher.remove(id) ?: return null
         forget(id)
-        return "${Reader.EPHEMERAL_PREFIX}${batch.id}:${System.nanoTime()}" to batch.toDocument()
+        return "${Reader.EPHEMERAL_PREFIX}${batch.id}:${System.nanoTime()}" to batch.toDocument(settings.readingRule(batch.packageName).parts)
     }
 
     fun dismiss(id: Int) {
