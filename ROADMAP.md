@@ -8,6 +8,64 @@ Status: **Done** (on a branch, not released), **In progress**, **Planned**, **Id
 
 Gaps found in a review of the app (November 2026). The first group is needed for any public release; the rest should be in the first version.
 
+### Second review (November 17, 2026)
+A full pass over the code (playback, notifications, sharing, importing, library, reader, voices, settings, startup, build) plus a fresh-install run on the emulator. The items below the review are still open from the first review.
+
+**Must fix before release**
+- **Security: other apps can make Murmur delete its own files.** The playback service must be exported for media controls, but its share command accepts a file path from any app, imports that file and then deletes it ([PlaybackService.kt](app/src/main/java/app/murmur/playback/PlaybackService.kt), `textFile`). Pointed at `index.json`, it wipes the library. Accept only files under the app's share cache, or move the share commands to a non-exported service.
+- **The library can be wiped.** If `index.json` can't be read (a truncated write, or an older build after a downgrade), the library loads as empty and the next change saves that empty list over it ([LibraryStore.kt](app/src/main/java/app/murmur/library/LibraryStore.kt)). Keep the unreadable file and rebuild from the saved documents instead.
+- **Writes don't wait for the library to load.** `add`, `replace`, `setStatus` and `delete` don't wait for the index to load, so a share or "Open with" at a cold start can replace the library with one item.
+- **Target SDK 36.** Google Play requires new apps and updates to target Android 16 (API 36) since August 31, 2026; Murmur targets 35.
+- **ML Kit sends usage logs to Google.** On every launch ML Kit queues a `FIREBASE_ML_SDK` event for upload to Firebase logging (seen in the emulator log). This started for everyone when the Google voices switch was removed, and it conflicts with "Nothing you read leaves your phone". Start ML Kit only when Google voices are used (Voice screens or a Google voice selected), off the main thread, and disclose it in the privacy policy and Play's Data safety form.
+- **Release build never run.** R8 is on and Kotlin 2.3 is paired with AGP 8.7.3, whose R8 may not read Kotlin 2.3 metadata. Build a release once and test voice download, playback, a Google voice's speed and PDF import.
+- **Notification reading stops music for good.** Reading a notification takes permanent audio focus, so Spotify or a podcast app stops and doesn't resume. Use transient focus for notifications.
+- **Large files crash the app.** Files are read whole into memory; a 100 MB PDF or large text file runs out of memory and the app closes.
+
+**Bugs to fix**
+- Library and reader:
+  - Reload overwrites the saved document in place; dying mid-write leaves an article that won't open. Write a temp file and rename it.
+  - Scrolling to the end outside reader mode marks the article Done and resets the listening place to the start.
+  - Text files with one paragraph per line become a single paragraph: slow, and the reading place can't be kept.
+  - Linked PDFs over 5 MB are rejected ("too large").
+  - Text and HTML files that aren't UTF-8 (Windows Notepad, older files) are garbled.
+  - Delete is immediate, with no confirmation or Undo.
+  - Find in a book-length document runs on the main thread and stutters.
+  - EPUB: notes and covers marked as non-linear are read aloud; two imports at once share one temp file.
+  - Site sign-in starts over if the phone rotates; Close doesn't save cookies right away.
+- Playback and sharing:
+  - A queued item that's deleted leaves the player stuck "playing" with no sound, and every later share goes to the queue.
+  - Pause while a shared page is preparing is ignored; reading starts anyway.
+  - The "Preparing"/"Saving" notification replaces the media controls, and can remove a paused article's controls from the lock screen.
+  - Audio tracks aren't released when an article ends, and can leak on fast seeking.
+  - A second shared PDF can lose its read permission before it's imported.
+  - Save for later runs as a media playback service, which Play's foreground service review may reject.
+- Notification reading:
+  - With no voice installed, tapping Play removes the message, then says a voice is needed.
+  - Message text stays in memory after notification reading is turned off.
+- Voices:
+  - A bad partial download can make a voice impossible to download until the cache is cleared; there are no checksums.
+  - A full disk leaves hundreds of MB of partial files, and there's no space check before downloading.
+  - Deleting a voice runs on the main thread (300+ MB).
+  - Two downloads at once share one progress notification.
+  - A Google voice that's no longer available stays selected.
+  - The download says "Downloading…" while it's extracting.
+- App:
+  - Rotating re-runs how the app was opened: it imports an opened PDF again, or reads the clipboard again.
+  - Notification permission is requested on every launch and rotation until denied twice.
+  - Startup does a lot on the main thread (about 15 objects, ML Kit); a fresh install's first launch hit "not responding" on the emulator.
+  - Welcome flow: after allowing notifications, the page still shows Allow; Skip doesn't download the chosen voice.
+  - The launcher icon and splash screen use the old navy speech bubble; the app uses the violet waveform.
+  - "Read aloud with Murmur" doesn't appear in Chrome's text selection menu (cause unknown).
+- Accessibility:
+  - Sliders (speed, pause, the player's position) have no label for TalkBack.
+  - Compact settings rows are 44dp tall; Android's minimum touch target is 48dp.
+
+**Essential features still missing**
+- Library export and import, About page with licenses and source link, privacy policy, Send feedback (below)
+- Undo for Delete
+- A visible queue: sharing can add to a queue, but there's no way to see or change it
+- Voice licenses on the Voice screen (some Piper voices are non-commercial only)
+
 ### Release signing key — Planned
 Release builds are signed with the debug key ([app/build.gradle.kts](app/build.gradle.kts)). Create a release key and keep it outside the repository, with a backup. An app published with one key can't switch to another without users uninstalling first.
 
@@ -171,14 +229,14 @@ Tapping the Speed button in the media notification opens a speed slider instead 
 
 ## Voices
 
-### Remove the Google voices setting — Planned
+### Remove the Google voices setting — Done
 Remove the **Google voices** switch from the bottom of the Voice screen ([VoicesScreen.kt](app/src/main/java/app/murmur/ui/screens/VoicesScreen.kt)), so Google voices appear on the Voice screen without turning them on first (play build, on phones that support them).
 - Today they're opt-in (`requiresOptIn` in [VoiceSource.kt](app/src/main/java/app/murmur/voice/VoiceSource.kt), `googleVoices` in [Settings.kt](app/src/main/java/app/murmur/settings/Settings.kt)), and the voice list only loads after the switch is turned on. Without the switch, the list loads at startup, so check that this doesn't slow down opening the app.
 - On phones where Google voices aren't available, nothing should appear, and no error should be shown.
 - The switch's note that every Google voice can sound the same on some phones goes away with it. To decide: whether to keep that note somewhere, such as on the Voice screen.
 - Remove the saved setting and the opt-in code once nothing uses them.
 
-### Stop or switch voice previews — Planned
+### Stop or switch voice previews — Done
 Control voice previews on the Voice screen while one is playing.
 - Today, tapping Play on a voice shows a spinner on that voice until the sample ends, and every other Play button is disabled meanwhile ([VoicesScreen.kt](app/src/main/java/app/murmur/ui/screens/VoicesScreen.kt)). There's no way to stop a sample early or try another voice without waiting.
 - **Stop**: while a sample plays, its Play button becomes a Stop button. Tapping it stops the sample right away.
