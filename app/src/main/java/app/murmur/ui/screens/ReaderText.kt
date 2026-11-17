@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +16,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatLineSpacing
@@ -405,8 +407,9 @@ private fun <T> SegmentedChoices(
 internal fun textSizeLabel(size: Int): String = "${(size * 100f / Settings.DEFAULT_TEXT_SIZE).roundToInt()}%"
 
 /**
- * Reader mode's controls: a floating bar with Back, text size, and Font, Colors and Spacing menus,
- * plus [moreItems] in a More options menu.
+ * Reader mode's controls: a floating bar with Close, Text (size and font), Colors and Spacing menus, the
+ * reader mode button shown as on (tapping it turns reader mode off), and [moreItems] in a More
+ * options menu. [onBack] closes reader mode, returning to the article.
  */
 @Composable
 internal fun ReaderModeBar(
@@ -440,19 +443,28 @@ internal fun ReaderModeBar(
             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-            IconButton(onClick = { settings.setTextSize(size - 1) }, enabled = size > Settings.MIN_TEXT_SIZE) {
-                Icon(Icons.Default.Remove, "Smaller text")
-            }
-            Text(textSizeLabel(size), style = MaterialTheme.typography.labelLarge)
-            IconButton(onClick = { settings.setTextSize(size + 1) }, enabled = size < Settings.MAX_TEXT_SIZE) {
-                Icon(Icons.Default.Add, "Larger text")
-            }
+            IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Close reader mode") }
             Spacer(Modifier.width(4.dp))
 
             Box {
-                FilledTonalIconButton(onClick = { openMenu = "font" }, colors = tonal) { Icon(Icons.Default.TextFields, "Font") }
+                FilledTonalIconButton(onClick = { openMenu = "font" }, colors = tonal) { Icon(Icons.Default.TextFields, "Text") }
                 DropdownMenu(expanded = openMenu == "font", onDismissRequest = { openMenu = null }) {
+                    // Text size first: it changes more often than the font.
+                    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { settings.setTextSize(size - 1) }, enabled = size > Settings.MIN_TEXT_SIZE) {
+                            Icon(Icons.Default.Remove, "Smaller text")
+                        }
+                        Text(
+                            textSizeLabel(size),
+                            style = MaterialTheme.typography.labelLarge,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { settings.setTextSize(size + 1) }, enabled = size < Settings.MAX_TEXT_SIZE) {
+                            Icon(Icons.Default.Add, "Larger text")
+                        }
+                    }
+                    HorizontalDivider()
                     ReaderFont.entries.forEach { f ->
                         ChoiceItem(f.label, f == font, fontFamily = f.family()) { settings.setReaderFont(f) }
                     }
@@ -485,6 +497,17 @@ internal fun ReaderModeBar(
                     }
                 }
             }
+
+            // The same button that turned reader mode on in the article, shown as on.
+            IconToggleButton(
+                checked = true,
+                onCheckedChange = { onBack() },
+                colors = IconButtonDefaults.iconToggleButtonColors(
+                    checkedContainerColor = scheme.primary,
+                    checkedContentColor = scheme.onPrimary,
+                ),
+                modifier = Modifier.padding(start = 4.dp),
+            ) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Reader mode") }
 
             Box {
                 IconButton(onClick = { onMoreOpenChange(true) }) { Icon(Icons.Default.MoreVert, "More options") }

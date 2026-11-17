@@ -648,9 +648,8 @@ private fun ReaderScreenBody(
                                 if (hasChapters) {
                                     IconButton(onClick = { chaptersOpen = true }) { Icon(Icons.AutoMirrored.Filled.List, "Chapters") }
                                 }
-                                if (meta?.source?.startsWith("http") == true) {
-                                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
-                                }
+                                // Always shown: the menu ends with Settings.
+                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "More options") }
                                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) { moreItems() }
                             },
                         )
