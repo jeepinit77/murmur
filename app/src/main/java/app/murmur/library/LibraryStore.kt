@@ -1,8 +1,10 @@
 package app.murmur.library
 
 import android.content.Context
+import android.util.Log
 import androidx.core.content.edit
 import app.murmur.text.Document
+import app.murmur.text.SentenceSegmenter
 import app.murmur.text.Snippet
 import app.murmur.text.TextSearch
 import app.murmur.web.UrlNormalizer
@@ -20,7 +22,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonArray
 import java.io.File
+import java.io.IOException
 import java.lang.ref.SoftReference
 import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
@@ -89,12 +95,12 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     /** Items listened to the end, or marked as done. */
     val finished: StateFlow<Set<String>> = _finished.asStateFlow()
 
+    /** Index entries this version can't read (for example from a newer version); written back unchanged. */
+    private var unreadableItems: List<JsonElement> = emptyList()
+
     init {
         scope.launch(Dispatchers.IO) {
-            val list = runCatching {
-                if (indexFile.exists()) json.decodeFromString(ListSerializer(DocMeta.serializer()), indexFile.readText())
-                else emptyList()
-            }.getOrDefault(emptyList())
+            val list = readIndex()
             _docs.value = list.sortedByDescending { it.addedAt }
             _progress.value = list.associate { it.id to progressPrefs.getInt(it.id, 0) }
             _finished.value = list.mapTo(mutableSetOf()) { it.id }.filterTo(mutableSetOf()) { finishedPrefs.getBoolean(it, false) }
@@ -280,13 +286,54 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * Reads the index without ever losing it. Entries are decoded one at a time, so one this
+     * version can't read doesn't drop the rest; those are kept and written back as they were.
+     * If the file can't be parsed at all (cut off by a crash), it's kept aside and the library is
+     * rebuilt from the saved documents, rather than starting empty and saving that over it.
+     */
+    private fun readIndex(): List<DocMeta> {
+        if (!indexFile.exists()) return emptyList()
+        val array = runCatching { json.parseToJsonElement(indexFile.readText()).jsonArray }.getOrNull()
+        if (array != null) {
+            val items = ArrayList<DocMeta>()
+            val unreadable = ArrayList<JsonElement>()
+            for (element in array) {
+                runCatching { json.decodeFromJsonElement(DocMeta.serializer(), element) }
+                    .onSuccess { items += it }
+                    .onFailure { unreadable += element }
+            }
+            if (unreadable.isNotEmpty()) Log.w(TAG, "Keeping ${unreadable.size} library entries this version can't read")
+            unreadableItems = unreadable
+            return items
+        }
+        Log.w(TAG, "The library index can't be read; rebuilding it from the saved documents")
+        runCatching { indexFile.copyTo(File(dir, "index.json.unreadable-${System.currentTimeMillis()}"), overwrite = true) }
+        val rebuilt = dir.listFiles { f -> f.name.endsWith(".json") && f.name != indexFile.name }.orEmpty().mapNotNull { f ->
+            val doc = runCatching { json.decodeFromString(Document.serializer(), f.readText()) }.getOrNull() ?: return@mapNotNull null
+            DocMeta(
+                id = f.name.removeSuffix(".json"),
+                title = doc.title,
+                author = doc.author,
+                source = doc.url ?: "Recovered",
+                kind = if (doc.url != null) Importer.KIND_WEB else Importer.KIND_TEXT,
+                addedAt = f.lastModified(),
+                segmentCount = SentenceSegmenter().segment(doc).size,
+            ).withDocument(doc, listOfNotNull(doc.url?.let { UrlNormalizer.key(it) }))
+        }.sortedByDescending { it.addedAt }
+        if (rebuilt.isNotEmpty()) writeIndex(rebuilt)
+        return rebuilt
+    }
+
     private fun writeIndex(list: List<DocMeta>) {
         val tmp = File(dir, "index.json.tmp")
-        tmp.writeText(json.encodeToString(ListSerializer(DocMeta.serializer()), list))
-        tmp.renameTo(indexFile)
+        val entries = json.encodeToJsonElement(ListSerializer(DocMeta.serializer()), list).jsonArray
+        tmp.writeText(JsonArray(entries + unreadableItems).toString())
+        if (!tmp.renameTo(indexFile)) throw IOException("Couldn't save the library index")
     }
 
     companion object {
+        private const val TAG = "LibraryStore"
         /** Match counts above this show as "100+". */
         const val MAX_COUNTED_MATCHES = 100
     }
