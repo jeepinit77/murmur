@@ -1,5 +1,7 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -133,8 +135,8 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
             if (mine.isEmpty()) {
                 item(key = "empty") {
                     SettingsCard(Modifier.padding(SCREEN_PADDING)) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("You haven't downloaded any voices yet.", style = MaterialTheme.typography.bodyLarge)
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("You haven't downloaded any voices yet.", style = MaterialTheme.typography.bodyMedium)
                             DownloadVoicesButton(onDownloads)
                         }
                     }
@@ -145,7 +147,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
             if (mine.size > 3 && mine.any { it.gender != null }) {
                 item(key = "filters") {
                     Row(
-                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        Modifier.padding(horizontal = SCREEN_PADDING, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         FilterChip(selected = genderFilter == null, onClick = { genderFilter = null }, label = { Text("All") })
@@ -155,7 +157,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                     }
                 }
             }
-            item(key = "h-mine") { SectionHeader("Your voices") }
+            item(key = "h-mine") { CardHeader("Your voices") }
             itemsIndexed(shown, key = { _, v -> v.id }) { i, voice ->
                 VoiceRow(
                     voice = voice,
@@ -167,7 +169,8 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                     selected = voice.id == selected,
                     previewing = previewing == voice.id,
                     canPreview = previewing == null,
-                    shape = segmentShape(i, shown.size),
+                    shape = cardRowShape(i, shown.size),
+                    divider = i > 0,
                     onSelect = {
                         c.settings.setVoice(voice.id)
                         c.reader.restartIfPlaying()
@@ -176,7 +179,7 @@ fun VoicesScreen(onDone: () -> Unit, onDownloads: () -> Unit) {
                 )
             }
             item(key = "downloads") {
-                Box(Modifier.padding(16.dp)) { DownloadVoicesButton(onDownloads) }
+                Box(Modifier.padding(SCREEN_PADDING)) { DownloadVoicesButton(onDownloads) }
             }
             if (c.voices.hasOptInSources) item(key = "google") { GoogleVoicesSetting() }
         }
@@ -220,6 +223,7 @@ private fun VoiceRow(
     previewing: Boolean,
     canPreview: Boolean,
     shape: Shape,
+    divider: Boolean,
     onSelect: () -> Unit,
     onPreview: () -> Unit,
 ) {
@@ -230,31 +234,33 @@ private fun VoiceRow(
         color = if (selected) colors.secondaryContainer else colors.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 1.dp)
+            .padding(horizontal = SCREEN_PADDING)
             .semantics { this.selected = selected },
     ) {
-        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+      Column {
+        if (divider) SectionDivider(start = 60.dp)
+        Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(if (selected) colors.primary else colors.surfaceContainerHighest),
                 contentAlignment = Alignment.Center,
             ) {
                 if (selected) {
-                    Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(18.dp))
                 } else {
                     Text(
                         voice.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = colors.onSurfaceVariant,
                     )
                 }
             }
-            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Text(
                     voice.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = if (selected) colors.onSecondaryContainer else colors.onSurface,
                 )
                 Text(
@@ -266,16 +272,18 @@ private fun VoiceRow(
             FilledTonalIconButton(
                 onClick = onPreview,
                 enabled = canPreview,
+                modifier = Modifier.size(36.dp),
                 colors = if (selected) {
                     IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.surface, contentColor = colors.onSurface)
                 } else {
                     IconButtonDefaults.filledTonalIconButtonColors()
                 },
             ) {
-                if (previewing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Filled.PlayArrow, contentDescription = "Preview ${voice.name}")
+                if (previewing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Filled.PlayArrow, contentDescription = "Preview ${voice.name}", modifier = Modifier.size(20.dp))
             }
         }
+      }
     }
 }
 
@@ -316,20 +324,20 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             item(key = "filters") {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Box(Modifier.padding(horizontal = SCREEN_PADDING, vertical = 4.dp)) {
                     LanguageFilter(languages, languageFilter) { languageFilter = it }
                 }
             }
             if (done.isNotEmpty()) {
-                item(key = "h-done") { SectionHeader("Downloaded") }
+                item(key = "h-done") { CardHeader("Downloaded") }
                 itemsIndexed(done, key = { _, d -> d.pkg.id }) { i, d ->
-                    DownloadRow(c, d, isInstalled = true, shape = segmentShape(i, done.size), onDelete = { confirmDelete = d })
+                    DownloadRow(c, d, isInstalled = true, shape = cardRowShape(i, done.size), divider = i > 0, onDelete = { confirmDelete = d })
                 }
             }
             if (available.isNotEmpty()) {
-                item(key = "h-available") { SectionHeader("Available") }
+                item(key = "h-available") { CardHeader("Available") }
                 itemsIndexed(available, key = { _, d -> d.pkg.id }) { i, d ->
-                    DownloadRow(c, d, isInstalled = false, shape = segmentShape(i, available.size), onDelete = {})
+                    DownloadRow(c, d, isInstalled = false, shape = cardRowShape(i, available.size), divider = i > 0, onDelete = {})
                 }
             }
         }
@@ -360,18 +368,20 @@ fun DownloadVoicesScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shape: Shape, onDelete: () -> Unit) {
+private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shape: Shape, divider: Boolean, onDelete: () -> Unit) {
     val source = remember(d.pkg.id) { sourceFor(c, d.voices.first()) }
     val state by remember(d.pkg.id) { source.downloadState(d.pkg) }.collectAsState(initial = DownloadState.Idle)
     val pkg = d.pkg
     Surface(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 1.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_PADDING),
     ) {
-        Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+      Column {
+        if (divider) SectionDivider(start = 14.dp)
+        Row(Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(pkg.name, style = MaterialTheme.typography.titleMedium)
+                Text(pkg.name, style = MaterialTheme.typography.bodyMedium)
                 // A download with one locale whose name doesn't say it (Piper voices) shows it here.
                 val locales = d.voices.map { it.language }.distinct()
                 val locale = locales.singleOrNull()?.let(::localeName)
@@ -432,10 +442,12 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
                 isInstalled -> Unit
                 else -> FilledTonalButton(
                     onClick = { source.download(d.voices.first()) },
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                ) { Text("Download") }
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                    modifier = Modifier.height(36.dp),
+                ) { Text("Download", style = MaterialTheme.typography.labelMedium) }
             }
         }
+      }
     }
 }
 
@@ -443,14 +455,27 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
 
 private fun sourceFor(c: AppContainer, voice: Voice) = c.voices.sourceOf(voice)
 
+/** The top of a card in a list: a small heading inside it, with the card's rows below. */
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 20.dp, bottom = 8.dp),
-    )
+private fun CardHeader(title: String) {
+    Surface(
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().padding(start = SCREEN_PADDING, end = SCREEN_PADDING, top = SCREEN_PADDING),
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp),
+        )
+    }
+}
+
+/** Row [index] of [count] under a [CardHeader]: square on top, and the last one rounded at the bottom. */
+private fun cardRowShape(index: Int, count: Int): Shape {
+    val bottom = if (index == count - 1) 16.dp else 0.dp
+    return RoundedCornerShape(bottomStart = bottom, bottomEnd = bottom)
 }
 
 @Composable

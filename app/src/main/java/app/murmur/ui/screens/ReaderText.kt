@@ -242,16 +242,22 @@ internal fun ReaderTextControls() {
     val keepScreenOn by settings.keepScreenOn.collectAsStateWithLifecycle()
 
     ColorRow(colors, settings::setReadingColors)
+    SectionDivider(start = 14.dp)
     TextSizeRow(size, settings::setTextSize)
+    SectionDivider(start = 14.dp)
     SegmentedRow(
         "Font", ReaderFont.entries, font, { it.label }, settings::setReaderFont,
         // Each choice is shown in its own typeface.
         labelFamily = { it.family() },
         stacked = true,
     )
+    SectionDivider(start = 14.dp)
     SegmentedRow("Line spacing", LineSpacing.entries, spacing, { it.label }, settings::setLineSpacing)
+    SectionDivider(start = 14.dp)
     SegmentedRow("Margins", ReaderMargins.entries, margins, { it.label }, settings::setReaderMargins)
+    SectionDivider(start = 14.dp)
     SegmentedRow("Alignment", ReaderAlignment.entries, alignment, { it.label }, settings::setReaderAlignment)
+    SectionDivider(start = 14.dp)
     SwitchRow(
         title = "Keep screen on",
         description = "While reader mode is on",
@@ -264,8 +270,8 @@ internal fun ReaderTextControls() {
 @Composable
 private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit) {
     val app = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text("Colors", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
+        Text("Colors", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 4.dp))
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -279,10 +285,10 @@ private fun ColorRow(selected: ReadingColors, onSelect: (ReadingColors) -> Unit)
                         .padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    ColorSwatch(choice, 44.dp, isSelected)
+                    ColorSwatch(choice, 36.dp, isSelected)
                     Text(
                         choice.label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         softWrap = false,
                         modifier = Modifier.padding(top = 4.dp),
@@ -320,14 +326,14 @@ private fun ColorSwatch(choice: ReadingColors, size: Dp, selected: Boolean) {
 private fun TextSizeRow(size: Int, onChange: (Int) -> Unit) {
     val min = Settings.MIN_TEXT_SIZE
     val max = Settings.MAX_TEXT_SIZE
-    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Text size", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text("Text size", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(textSizeLabel(size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onChange(size - 1) }, enabled = size > min, modifier = Modifier.offset(x = (-12).dp)) {
-                Icon(Icons.Default.TextDecrease, "Smaller text")
+                Icon(Icons.Default.TextDecrease, "Smaller text", Modifier.size(20.dp))
             }
             SlimSlider(
                 value = size.toFloat(),
@@ -336,7 +342,7 @@ private fun TextSizeRow(size: Int, onChange: (Int) -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { onChange(size + 1) }, enabled = size < max, modifier = Modifier.offset(x = 12.dp)) {
-                Icon(Icons.Default.TextIncrease, "Larger text")
+                Icon(Icons.Default.TextIncrease, "Larger text", Modifier.size(20.dp))
             }
         }
     }
@@ -355,17 +361,17 @@ private fun <T> SegmentedRow(
 ) {
     if (stacked) {
         // Title above, for choices that need the full width.
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
             SegmentedChoices(Modifier.fillMaxWidth(), options, selected, label, onSelect, labelFamily)
         }
         return
     }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(112.dp))
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(96.dp))
         SegmentedChoices(Modifier.weight(1f), options, selected, label, onSelect, labelFamily)
     }
 }
@@ -387,7 +393,10 @@ private fun <T> SegmentedChoices(
                 shape = SegmentedButtonDefaults.itemShape(i, options.size),
                 // No check mark: the selected choice is filled, and the labels need the room.
                 icon = {},
-            ) { Text(label(option), maxLines = 1, softWrap = false, fontFamily = labelFamily(option)) }
+                modifier = Modifier.height(36.dp),
+            ) {
+                Text(label(option), style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false, fontFamily = labelFamily(option))
+            }
         }
     }
 }

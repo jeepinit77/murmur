@@ -87,14 +87,14 @@ private fun Swatch(palette: Palette, color: Color, selected: Boolean, onClick: (
     val onColor = if (color.luminance() > 0.4f) Color.Black else Color.White
     Column(
         Modifier
-            .width(76.dp)
+            .width(64.dp)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             Modifier
-                .size(48.dp)
+                .size(36.dp)
                 .clip(CircleShape)
                 .background(color)
                 .then(
@@ -104,13 +104,13 @@ private fun Swatch(palette: Palette, color: Color, selected: Boolean, onClick: (
             contentAlignment = Alignment.Center,
         ) {
             when {
-                selected -> Icon(Icons.Default.Check, null, tint = if (palette == Palette.WALLPAPER) MaterialTheme.colorScheme.onSurface else onColor)
-                palette == Palette.WALLPAPER -> Icon(Icons.Default.Wallpaper, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                selected -> Icon(Icons.Default.Check, null, Modifier.size(20.dp), tint = if (palette == Palette.WALLPAPER) MaterialTheme.colorScheme.onSurface else onColor)
+                palette == Palette.WALLPAPER -> Icon(Icons.Default.Wallpaper, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Text(
             palette.label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false,
