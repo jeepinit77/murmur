@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -39,7 +40,8 @@ class MurmurApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         createChannels()
-        ShareShortcuts.publish(this)
+        // A call to the system that can be slow while the phone is busy; not needed for startup.
+        container.appScope.launch(Dispatchers.IO) { ShareShortcuts.publish(this@MurmurApp) }
         // The listener unbinds itself while the setting is off; reconnect it if it's on now.
         if (container.settings.notificationReading.value) NotificationReaderService.applySetting(this, true)
     }

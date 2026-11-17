@@ -134,7 +134,7 @@ private fun CategoryGroup(vararg items: Category) {
 /** One category's settings on its own page. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit) {
+fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit, onWelcome: () -> Unit = {}) {
     Scaffold(topBar = { TopAppBar(title = { Text(page.title) }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
             Modifier
@@ -149,7 +149,7 @@ fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit) {
                 SettingsPage.APPEARANCE -> AppearanceSettings()
                 SettingsPage.READING -> ReadingSettings()
                 SettingsPage.SHARING -> SharingSettings()
-                SettingsPage.ABOUT -> AboutSettings()
+                SettingsPage.ABOUT -> AboutSettings(onWelcome)
             }
         }
     }
@@ -370,7 +370,10 @@ private fun ReadingSettings() {
 }
 
 @Composable
-private fun AboutSettings() {
+private fun AboutSettings(onWelcome: () -> Unit) {
+    SettingsGroup {
+        NavigationRow("Welcome tour", description = "Choosing a voice, adding things to read, and what else Murmur does", onClick = onWelcome)
+    }
     SettingsGroup {
         Text(
             "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +

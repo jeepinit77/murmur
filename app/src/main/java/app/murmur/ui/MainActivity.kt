@@ -40,6 +40,7 @@ import app.murmur.ui.screens.SettingsScreen
 import app.murmur.ui.screens.SettingsPage
 import app.murmur.ui.screens.SettingsPageScreen
 import app.murmur.ui.screens.DownloadVoicesScreen
+import app.murmur.ui.screens.WelcomeScreen
 import app.murmur.ui.screens.VoicesScreen
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.filterNotNull
@@ -65,7 +66,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        // New installs see the welcome flow, which asks for this with its reason.
+        val showWelcome = !container.settings.welcomeDone && !container.voices.hasAnyInstalled()
+        if (!showWelcome && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         handleIntent(intent)
 
         // Gemini Nano only runs while Murmur is on screen. Summarize tables postponed during
@@ -82,7 +85,13 @@ class MainActivity : ComponentActivity() {
             MurmurTheme {
                 val nav = rememberNavController()
                 // Remembered: a changed start destination makes NavHost rebuild its graph and reset the back stack.
-                val start = remember { if (container.voices.hasAnyInstalled()) ROUTE_LIBRARY else ROUTE_VOICES }
+                val start = remember {
+                    when {
+                        showWelcome -> ROUTE_WELCOME
+                        container.voices.hasAnyInstalled() -> ROUTE_LIBRARY
+                        else -> ROUTE_VOICES
+                    }
+                }
                 NavHost(navController = nav, startDestination = start) {
                     composable(ROUTE_LIBRARY) {
                         LibraryScreen(
@@ -156,9 +165,17 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("$ROUTE_SETTINGS/{page}") { entry ->
                         val page = SettingsPage.fromRoute(entry.arguments?.getString("page"))
-                        if (page != null) SettingsPageScreen(page, onBack = { nav.popBackStack() })
+                        if (page != null) SettingsPageScreen(page, onBack = { nav.popBackStack() }, onWelcome = { nav.navigate(ROUTE_WELCOME) })
                     }
                     composable(ROUTE_NOTIFICATION_READING) { NotificationReadingScreen(onBack = { nav.popBackStack() }) }
+                    composable(ROUTE_WELCOME) {
+                        WelcomeScreen(
+                            onDone = {
+                                // From Settings, back to it; on first launch, on to the library.
+                                if (!nav.popBackStack()) nav.navigate(ROUTE_LIBRARY) { popUpTo(ROUTE_WELCOME) { inclusive = true } }
+                            },
+                        )
+                    }
                 }
                 // Routes from intents (notification, share, "open with"). Read through snapshotFlow so
                 // composition never depends on pendingRoute; on a cold start, wait until NavHost has
@@ -253,6 +270,7 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_VOICES = "voices"
         const val ROUTE_VOICE_DOWNLOADS = "voice_downloads"
         const val ROUTE_SETTINGS = "settings"
+        const val ROUTE_WELCOME = "welcome"
         const val ROUTE_NOTIFICATION_READING = "notification_reading"
     }
 }

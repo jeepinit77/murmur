@@ -317,6 +317,11 @@ class Settings(context: Context) {
         prefs.edit { putString("$KEY_NR_RULE$pkg", rule.encode()) }
     }
 
+    /** The welcome flow was finished or skipped. */
+    var welcomeDone: Boolean
+        get() = prefs.getBoolean(KEY_WELCOME_DONE, false)
+        set(value) = prefs.edit { putBoolean(KEY_WELCOME_DONE, value) }
+
     /** The home screen card suggesting notification reading was dismissed. */
     var notificationTipDismissed: Boolean
         get() = prefs.getBoolean(KEY_NR_TIP_DISMISSED, false)
@@ -422,5 +427,6 @@ class Settings(context: Context) {
         /** Followed by a package name. */
         private const val KEY_NR_RULE = "notification_autoplay_rule_"
         private const val KEY_NR_TIP_DISMISSED = "notification_tip_dismissed"
+        private const val KEY_WELCOME_DONE = "welcome_done"
     }
 }
