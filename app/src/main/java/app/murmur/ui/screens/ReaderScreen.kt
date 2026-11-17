@@ -185,8 +185,21 @@ fun ReaderScreen(
     onReaderMode: ((docId: String) -> Unit)? = null,
     onSettings: () -> Unit = {},
 ) {
+    // Reader mode hides the system bars. Leaving it brings them back right away, so the screen
+    // sliding in is laid out with them from the start instead of shifting once the slide ends.
+    val view = LocalView.current
+    fun leaving(go: () -> Unit): () -> Unit = if (!readerMode) go else {
+        {
+            (view.context as? android.app.Activity)?.window?.let {
+                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
+            }
+            go()
+        }
+    }
+    val back = leaving(onBack)
+    if (readerMode) BackHandler { back() }
     ReadingTheme(enabled = readerMode) {
-        ReaderScreenBody(docId, onBack, onVoices, initialFind, readerMode, onReaderMode, onSettings)
+        ReaderScreenBody(docId, back, leaving(onVoices), initialFind, readerMode, onReaderMode, leaving(onSettings))
     }
 }
 
