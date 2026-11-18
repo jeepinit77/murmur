@@ -150,7 +150,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
                 addedAt = System.currentTimeMillis(),
                 segmentCount = segmentCount,
             ).withDocument(document, urlKeys)
-            File(dir, "${meta.id}.json").writeText(json.encodeToString(Document.serializer(), document))
+            writeAtomically(File(dir, "${meta.id}.json"), json.encodeToString(Document.serializer(), document))
             val list = listOf(meta) + _docs.value
             writeIndex(list)
             _docs.value = list
@@ -187,7 +187,8 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
             loaded.await()
             mutex.withLock {
                 val old = _docs.value.firstOrNull { it.id == id } ?: return@withContext null
-                File(dir, "$id.json").writeText(json.encodeToString(Document.serializer(), document))
+                // Reload replaces the saved copy; a crash mid-write must leave the old one, not half a file.
+                writeAtomically(File(dir, "$id.json"), json.encodeToString(Document.serializer(), document))
                 searchCache.remove(id)
                 val meta = old.copy(
                     title = document.title, author = document.author, source = source, kind = kind,
@@ -338,10 +339,18 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     }
 
     private fun writeIndex(list: List<DocMeta>) {
-        val tmp = File(dir, "index.json.tmp")
         val entries = json.encodeToJsonElement(ListSerializer(DocMeta.serializer()), list).jsonArray
-        tmp.writeText(JsonArray(entries + unreadableItems).toString())
-        if (!tmp.renameTo(indexFile)) throw IOException("Couldn't save the library index")
+        writeAtomically(indexFile, JsonArray(entries + unreadableItems).toString())
+    }
+
+    /** Writes a temp file and renames it over [file], so a crash leaves either the old or the new file. */
+    private fun writeAtomically(file: File, text: String) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            throw IOException("Couldn't save ${file.name}")
+        }
     }
 
     companion object {
