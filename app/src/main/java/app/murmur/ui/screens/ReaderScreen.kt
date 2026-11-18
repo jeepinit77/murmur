@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.produceState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.animation.AnimatedVisibility
@@ -770,6 +773,10 @@ private fun ReaderScreenBody(
                             },
                             onValueChangeFinished = { dragging = null },
                             valueRange = 0f..1f,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Position in article"
+                                stateDescription = "${((dragging ?: progress) * 100).roundToInt()} percent"
+                            },
                         )
                     }
                 }

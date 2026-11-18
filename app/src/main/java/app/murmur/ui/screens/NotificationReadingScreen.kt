@@ -511,7 +511,7 @@ private fun <T> IconMenuRow(
             Modifier
                 .fillMaxWidth()
                 .clickable { open = true }
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
                 .padding(start = 14.dp, end = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

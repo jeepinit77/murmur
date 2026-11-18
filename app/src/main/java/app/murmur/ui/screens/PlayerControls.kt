@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import android.os.SystemClock
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
@@ -314,7 +317,10 @@ private fun ExpandedControls(
                         trackInsideCornerSize = 2.dp,
                     )
                 },
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = 4.dp).semantics {
+                    contentDescription = "Position"
+                    stateDescription = "Sentence ${(dragging?.roundToInt() ?: state.currentIndex) + 1} of ${state.segmentCount}"
+                },
             )
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 val shown = dragging?.roundToInt() ?: state.currentIndex

@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.window.PopupProperties
 import androidx.activity.compose.BackHandler
 import android.os.SystemClock
@@ -344,7 +347,7 @@ private fun TextSizeRow(size: Int, onChange: (Int) -> Unit) {
                 value = size.toFloat(),
                 onValueChange = { onChange(it.roundToInt()) },
                 valueRange = min.toFloat()..max.toFloat(),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { contentDescription = "Text size"; stateDescription = textSizeLabel(size) },
             )
             IconButton(onClick = { onChange(size + 1) }, enabled = size < max, modifier = Modifier.offset(x = 12.dp)) {
                 Icon(Icons.Default.TextIncrease, "Larger text", Modifier.size(20.dp))

@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -148,7 +151,7 @@ internal fun SwitchRow(title: String, description: String?, checked: Boolean, on
         Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(start = ROW_PADDING, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -169,7 +172,7 @@ internal fun RadioRow(
         Modifier
             .fillMaxWidth()
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(start = ROW_PADDING, end = ROW_PADDING),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -192,7 +195,8 @@ internal fun SliderRow(
             Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(value, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
-        SlimSlider(position, onChange, range)
+        // TalkBack reads the setting's name and its value ("Pause between paragraphs, 450 ms").
+        SlimSlider(position, onChange, range, Modifier.semantics { contentDescription = title; stateDescription = value })
     }
 }
 
@@ -203,7 +207,7 @@ internal fun NavigationRow(title: String, description: String?, value: String? =
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(start = ROW_PADDING, end = 10.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -290,7 +294,7 @@ internal fun <T> ChoiceRow(title: String, choices: List<Choice<T>>, selected: T,
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(horizontal = ROW_PADDING, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -380,7 +384,7 @@ internal fun CompactSwitchRow(icon: ImageVector?, title: String, description: St
         Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -397,7 +401,7 @@ internal fun CompactNavigationRow(icon: ImageVector?, title: String, summary: St
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .heightIn(min = 44.dp)
+            .heightIn(min = 48.dp)
             .padding(start = 14.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
