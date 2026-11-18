@@ -254,7 +254,10 @@ class Reader(
 
     fun play() {
         val content = _content.value ?: return
-        if (content.segments.isEmpty() || !requestFocus()) {
+        // A notification read while nothing of Murmur's was playing borrows the audio only briefly,
+        // so music or a podcast in another app pauses and then resumes by itself.
+        val transient = isEphemeral(content.docId) && resumeAfter?.play != true
+        if (content.segments.isEmpty() || !requestFocus(transient)) {
             _state.update { it.copy(playWhenReady = false, buffering = false) }
             return
         }
@@ -627,8 +630,11 @@ class Reader(
         }
     }
 
-    private fun requestFocus(): Boolean {
-        val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+    private fun requestFocus(transient: Boolean): Boolean {
+        val gain = if (transient) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT else AudioManager.AUDIOFOCUS_GAIN
+        // Both kinds share the listener, so Android treats them as one client and switching between
+        // them doesn't make Murmur lose focus to itself.
+        val req = focusRequest?.takeIf { it.focusGain == gain } ?: AudioFocusRequest.Builder(gain)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
