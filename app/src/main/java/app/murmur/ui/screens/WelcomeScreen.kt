@@ -105,20 +105,6 @@ fun WelcomeScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val page = pages[pager.currentPage]
 
-    // Asked on the Notifications page, with its reason, or on finishing if that page was skipped.
-    var permissionAsked by rememberSaveable { mutableStateOf(false) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    fun askForNotifications() {
-        permissionAsked = true
-        c.settings.notificationPermissionAsked = true
-        if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
-    fun finish() {
-        if (!permissionAsked && needsNotificationPermission(context)) askForNotifications()
-        c.settings.welcomeDone = true
-        onDone()
-    }
-
     // The voice chosen on the Voice page starts downloading when the page is left.
     var chosenPackage by rememberSaveable { mutableStateOf<String?>(null) }
     fun startChosenDownload() {
@@ -127,6 +113,26 @@ fun WelcomeScreen(onDone: () -> Unit) {
         if (c.voices.voices.value.none { it.pkg.id == pkgId && it.id in c.voices.installed.value }) {
             c.voices.sourceOf(voice).download(voice)
         }
+    }
+
+    // Asked on the Notifications page, with its reason, or on finishing if that page was skipped.
+    var permissionAsked by rememberSaveable { mutableStateOf(false) }
+    // Updated from the permission dialog's answer, so the page shows Allowed right after.
+    var notificationsAllowed by remember { mutableStateOf(!needsNotificationPermission(context)) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationsAllowed = granted || !needsNotificationPermission(context)
+    }
+    fun askForNotifications() {
+        permissionAsked = true
+        c.settings.notificationPermissionAsked = true
+        if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    fun finish() {
+        // Skip shouldn't drop the voice chosen on the Voice page.
+        startChosenDownload()
+        if (!permissionAsked && needsNotificationPermission(context)) askForNotifications()
+        c.settings.welcomeDone = true
+        onDone()
     }
 
     fun next() {
@@ -165,7 +171,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                     WelcomePage.WELCOME -> WelcomeIntro()
                     WelcomePage.VOICE -> VoicePage(chosenPackage) { chosenPackage = it }
                     WelcomePage.ADD -> AddPage()
-                    WelcomePage.NOTIFICATIONS -> NotificationsPage(permissionAsked, ::askForNotifications)
+                    WelcomePage.NOTIFICATIONS -> NotificationsPage(notificationsAllowed, ::askForNotifications)
                     WelcomePage.MORE -> MorePage(chosenPackage)
                 }
             }
@@ -441,13 +447,10 @@ private fun AddPage() {
 }
 
 @Composable
-private fun NotificationsPage(permissionAsked: Boolean, onAskPermission: () -> Unit) {
+private fun NotificationsPage(granted: Boolean, onAskPermission: () -> Unit) {
     val context = LocalContext.current
     val c = context.container
     val reading by c.settings.notificationReading.collectAsStateWithLifecycle()
-    var granted by remember { mutableStateOf(!needsNotificationPermission(context)) }
-    // Recheck after Android's permission dialog closes.
-    LaunchedEffect(permissionAsked) { granted = !needsNotificationPermission(context) }
 
     PageColumn {
         IconBadge(Icons.Outlined.Notifications)
