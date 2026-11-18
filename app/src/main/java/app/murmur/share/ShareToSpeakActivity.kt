@@ -90,9 +90,13 @@ class ShareToSpeakActivity : Activity() {
                 Toast.makeText(context, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
                 return
             }
+            // Saving plays nothing, so it runs as a background job rather than in the playback
+            // service; the job says when the item is ready.
+            if (request.action == ShareAction.SAVE) {
+                SaveWorker.enqueue(context, local)
+                return
+            }
             PlaybackService.speak(context, local)
-            // The service says when a saved item is ready.
-            if (request.action == ShareAction.SAVE) return
             val queueWhenBusy = request.action == ShareAction.QUEUE || c.settings.shareMode.value == ShareMode.QUEUE
             val queued = queueWhenBusy && c.reader.isBusy()
             Toast.makeText(context, if (queued) R.string.queued else R.string.reading, Toast.LENGTH_SHORT).show()

@@ -380,6 +380,28 @@ data class SpeakRequest(
         return copy(uri = null, sharedFile = file.name)
     }
 
+    /**
+     * WorkManager input for [app.murmur.share.SaveWorker]. Its data is limited to 10 KB, so text
+     * goes into a cache file the same way long shared text does.
+     */
+    fun toData(context: Context): androidx.work.Data {
+        val b = androidx.work.Data.Builder()
+            .putString(EXTRA_SUBJECT, subject)
+            .putString(EXTRA_MIME, mime)
+            .putBoolean(EXTRA_IMPORT_AGAIN, importAgain)
+            .putString(EXTRA_ACTION, action.name)
+            .putString(EXTRA_SHARED_FILE, sharedFile)
+            .putString(EXTRA_HTML, html?.take(MAX_DATA_HTML))
+            .putString(EXTRA_URI, uri?.toString())
+        val name = textFile ?: text?.let { t ->
+            File(context.cacheDir, "share-${System.nanoTime()}.txt").also { it.writeText(t) }.name
+        }
+        b.putString(EXTRA_TEXT_FILE, name)
+        // Short text also inline, so a link is still recognized as a link.
+        text?.takeIf { it.length < MAX_DATA_TEXT }?.let { b.putString(EXTRA_TEXT, it) }
+        return b.build()
+    }
+
     /** The copied shared file, if it has Murmur's naming and is in its cache folder. */
     fun sharedFile(context: Context): File? =
         sharedFile?.takeIf { SHARED_FILE_NAME.matches(it) }?.let { File(context.cacheDir, it) }
@@ -435,6 +457,26 @@ data class SpeakRequest(
         private const val EXTRA_ACTION = "share_action"
         private const val MAX_INLINE = 200_000
         private val SHARE_FILE_NAME = Regex("share-\\d+\\.txt")
+
+        private const val MAX_DATA_HTML = 4_000
+        private const val MAX_DATA_TEXT = 2_000
+
+        fun fromData(data: androidx.work.Data): SpeakRequest? {
+            val text = data.getString(EXTRA_TEXT)
+            val r = SpeakRequest(
+                text = text,
+                html = data.getString(EXTRA_HTML),
+                subject = data.getString(EXTRA_SUBJECT),
+                uri = data.getString(EXTRA_URI)?.let(Uri::parse),
+                mime = data.getString(EXTRA_MIME),
+                // Inline text wins; the file is only needed when the text was too long for the data.
+                textFile = if (text != null) null else data.getString(EXTRA_TEXT_FILE),
+                sharedFile = data.getString(EXTRA_SHARED_FILE),
+                importAgain = data.getBoolean(EXTRA_IMPORT_AGAIN, false),
+                action = runCatching { ShareAction.valueOf(data.getString(EXTRA_ACTION) ?: "") }.getOrDefault(ShareAction.SAVE),
+            )
+            return if (r.text == null && r.html == null && r.uri == null && r.textFile == null && r.sharedFile == null) null else r
+        }
 
         fun fromServiceIntent(intent: Intent): SpeakRequest? {
             val r = SpeakRequest(
