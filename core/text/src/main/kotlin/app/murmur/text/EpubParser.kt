@@ -31,11 +31,13 @@ object EpubParser {
 
         val manifest = opf.selectAny("manifest > item", "opf|manifest > opf|item")
             .associate { it.attr("id") to it }
-        val spine = opf.selectAny("spine > itemref", "opf|spine > opf|itemref").map { it.attr("idref") }
+        // linear="no" is on the spine's itemref: covers, footnotes and other supplementary pages.
+        val spine = opf.selectAny("spine > itemref", "opf|spine > opf|itemref")
+            .filter { it.attr("linear") != "no" }
+            .map { it.attr("idref") }
 
         val chapters = spine.mapNotNull { idref ->
             val item = manifest[idref] ?: return@mapNotNull null
-            if (item.attr("linear") == "no") return@mapNotNull null
             val type = item.attr("media-type")
             if (type.isNotEmpty() && "html" !in type) return@mapNotNull null
             val href = resolve(opfDir, item.attr("href"))

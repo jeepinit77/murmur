@@ -66,10 +66,12 @@ class ImportersTest {
                   <item id="c2" href="text/ch%202.xhtml" media-type="application/xhtml+xml"/>
                   <item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>
                   <item id="css" href="style.css" media-type="text/css"/>
+                  <item id="notes" href="text/notes.xhtml" media-type="application/xhtml+xml"/>
                 </manifest>
-                <spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>""")
+                <spine><itemref idref="c1"/><itemref idref="c2"/><itemref idref="notes" linear="no"/></spine></package>""")
             put("OEBPS/text/ch1.xhtml", "<html><body><h1>Chapter One</h1><p>It begins.</p></body></html>")
             put("OEBPS/text/ch 2.xhtml", "<html><body><h2>Chapter Two</h2><p>It ends.</p></body></html>")
+            put("OEBPS/text/notes.xhtml", "<html><body><h2>Notes</h2><p>Supplementary, not read.</p></body></html>")
         }
         val doc = EpubParser.parse(file)
         assertEquals("My Book", doc.title)
