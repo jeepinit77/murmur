@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+. Voices (30–330 MB each) and site icons can be downloaded again; leaving them out
+    keeps the cloud backup under Android's 25 MB limit, so the library and settings are backed up.
+    A phone-to-phone transfer has no size limit, but voices are still left out to keep it quick.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="voices/" />
+        <exclude domain="file" path="site-icons/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="voices/" />
+        <exclude domain="file" path="site-icons/" />
+    </device-transfer>
+</data-extraction-rules>
