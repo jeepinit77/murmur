@@ -57,6 +57,8 @@ data class ReaderState(
     val speed: Float = 1f,
     val sleepAtElapsed: Long? = null,
     val queueSize: Int = 0,
+    /** Library ids waiting to be read after the current item, in order. */
+    val queuedIds: List<String> = emptyList(),
     /** Something worth knowing that isn't an error, such as a missing voice for the article's language. */
     val notice: String? = null,
 ) {
@@ -247,12 +249,18 @@ class Reader(
 
     /** Drops a deleted item from the queue. */
     fun removeFromQueue(docId: String) {
-        if (queue.removeAll { it == docId }) _state.update { it.copy(queueSize = queue.size) }
+        if (queue.removeAll { it == docId }) _state.update { it.copy(queueSize = queue.size, queuedIds = queue.toList()) }
+    }
+
+    /** Plays a queued item now, taking it out of the queue. */
+    fun playFromQueue(docId: String) {
+        removeFromQueue(docId)
+        scope.launch { openFromLibrary(docId, autoplay = true) }
     }
 
     fun enqueue(docId: String) {
         queue.addLast(docId)
-        _state.update { it.copy(queueSize = queue.size) }
+        _state.update { it.copy(queueSize = queue.size, queuedIds = queue.toList()) }
     }
 
     /** True when something real is loaded and playing or about to play. */
@@ -516,7 +524,7 @@ class Reader(
         }
         library.setFinished(content.docId, true)
         val nextId = queue.removeFirstOrNull()
-        _state.update { it.copy(queueSize = queue.size) }
+        _state.update { it.copy(queueSize = queue.size, queuedIds = queue.toList()) }
         if (nextId != null) {
             // Launched separately: opening cancels the current play job, which is this one. An
             // item that can't be opened (deleted meanwhile) is skipped instead of leaving the

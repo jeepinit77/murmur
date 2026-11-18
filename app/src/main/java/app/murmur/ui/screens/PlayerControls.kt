@@ -1,5 +1,8 @@
 package app.murmur.ui.screens
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -372,6 +375,43 @@ private fun ExpandedControls(
                 onClick = onVoices,
                 modifier = Modifier.weight(1f),
             )
+        }
+
+        if (state.queuedIds.isNotEmpty()) UpNext(state.queuedIds, reader)
+    }
+}
+
+/** The items queued after the current one: tap to play now, or remove. */
+@Composable
+private fun UpNext(ids: List<String>, reader: Reader) {
+    val library = LocalContext.current.container.library
+    val docs by library.docs.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.colorScheme
+    Text(
+        "Up next",
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 4.dp, top = 16.dp, bottom = 4.dp),
+    )
+    Surface(shape = RoundedCornerShape(16.dp), color = colors.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            ids.forEachIndexed { i, id ->
+                val title = docs.firstOrNull { it.id == id }?.title ?: return@forEachIndexed
+                if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = colors.outlineVariant)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClickLabel = "Play now") { reader.playFromQueue(id) }
+                        .heightIn(min = 48.dp)
+                        .padding(start = 14.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { reader.removeFromQueue(id) }) {
+                        Icon(Icons.Default.Close, "Remove $title from the queue", Modifier.size(20.dp))
+                    }
+                }
+            }
         }
     }
 }
