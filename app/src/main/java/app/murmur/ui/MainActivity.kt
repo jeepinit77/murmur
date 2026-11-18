@@ -69,7 +69,10 @@ class MainActivity : ComponentActivity() {
         // New installs see the welcome flow, which asks for this with its reason.
         val showWelcome = !container.settings.welcomeDone && !container.voices.hasAnyInstalled()
         if (!showWelcome && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        handleIntent(intent)
+        // A recreated activity (rotation, process death) or one reopened from Recents still holds
+        // the intent it was first opened with; handling it again would import or read it again.
+        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromHistory) handleIntent(intent)
 
         // Gemini Nano only runs while Murmur is on screen. Summarize tables postponed during
         // imports now, and whenever an item with postponed tables is saved while Murmur is open.
