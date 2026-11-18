@@ -104,7 +104,7 @@ class PlaybackService : MediaSessionService() {
             Log.w("MurmurPlayback", "Ignoring $action without Murmur's token")
             if (action != ACTION_CANCEL_IMPORT) {
                 // Started with startForegroundService(): Android requires a foreground notification.
-                ServiceCompat.startForeground(this, NOTIFICATION_ID, preparingNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                ServiceCompat.startForeground(this, placeholderId(), preparingNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                 stopIfIdle()
             }
             return super.onStartCommand(intent, flags, startId)
@@ -115,7 +115,7 @@ class PlaybackService : MediaSessionService() {
                 // this notification with the media-style one (same id) once playback state updates.
                 val request = SpeakRequest.fromServiceIntent(intent)
                 ServiceCompat.startForeground(
-                    this, NOTIFICATION_ID,
+                    this, placeholderId(),
                     preparingNotification(if (request?.action == ShareAction.SAVE) R.string.saving else R.string.preparing),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
@@ -125,7 +125,7 @@ class PlaybackService : MediaSessionService() {
             }
             ACTION_SPEAK_NOTIFICATION -> {
                 ServiceCompat.startForeground(
-                    this, NOTIFICATION_ID, preparingNotification(),
+                    this, placeholderId(), preparingNotification(),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
                 val c = container
@@ -220,6 +220,13 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * The id for the "Preparing"/"Saving" notification. While an article is loaded (playing or
+     * paused), its media controls use [NOTIFICATION_ID]; the placeholder gets its own id so it
+     * doesn't replace them, and removing it later doesn't remove them from the lock screen.
+     */
+    private fun placeholderId(): Int = if (container.reader.content.value != null) PLACEHOLDER_ID else NOTIFICATION_ID
+
     private fun stopIfIdle() {
         if (!container.reader.isBusy() && pending.get() == 0) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -261,6 +268,8 @@ class PlaybackService : MediaSessionService() {
         const val ACTION_OPEN_PLAYER = "app.murmur.action.OPEN_PLAYER"
         /** Same id Media3's DefaultMediaNotificationProvider uses, so its notification replaces ours. */
         private const val NOTIFICATION_ID = 1001
+        /** "Preparing" or "Saving" while something is already loaded in the player. */
+        private const val PLACEHOLDER_ID = 1002
 
         private var sharedPlayer: SpeechPlayer? = null
 
