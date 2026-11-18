@@ -111,8 +111,10 @@ class PageFetcher(base: OkHttpClient) {
         val type = body.contentType()
         val source = body.source()
         val buffer = Buffer()
+        // PDFs (papers, reports) are often far larger than web pages, and are parsed from a file.
+        val limit = if (type?.subtype == "pdf") MAX_PDF_BYTES else MAX_BYTES
         while (source.read(buffer, 64 * 1024) != -1L) {
-            if (buffer.size > MAX_BYTES) throw ImportException("This page is too large to import")
+            if (buffer.size > limit) throw ImportException(if (limit == MAX_PDF_BYTES) "This PDF is too large to import" else "This page is too large to import")
         }
         return FetchedPage(
             finalUrl = response.request.url.toString(),
@@ -125,6 +127,7 @@ class PageFetcher(base: OkHttpClient) {
 
     companion object {
         const val MAX_BYTES = 5L * 1024 * 1024
+        const val MAX_PDF_BYTES = 100L * 1024 * 1024
         const val ACCEPT_HTML = "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8"
         const val ACCEPT_JSON = "application/json,text/html;q=0.5"
         const val USER_AGENT =
