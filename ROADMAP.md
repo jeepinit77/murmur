@@ -9,67 +9,41 @@ Status: **Done** (on a branch, not released), **In progress**, **Planned**, **Id
 Gaps found in a review of the app (November 2026). The first group is needed for any public release; the rest should be in the first version.
 
 ### Second review (November 17, 2026)
-A full pass over the code (playback, notifications, sharing, importing, library, reader, voices, settings, startup, build) plus a fresh-install run on the emulator. The items below the review are still open from the first review.
+A full pass over the code (playback, notifications, sharing, importing, library, reader, voices, settings, startup, build) plus a fresh-install run on the emulator. Most findings are fixed, each in its own commit; what's left is below. The items after this section are still open from the first review.
 
-**Must fix before release**
-- **Security: other apps can make Murmur delete its own files.** The playback service must be exported for media controls, but its share command accepts a file path from any app, imports that file and then deletes it ([PlaybackService.kt](app/src/main/java/app/murmur/playback/PlaybackService.kt), `textFile`). Pointed at `index.json`, it wipes the library. Accept only files under the app's share cache, or move the share commands to a non-exported service.
-- **The library can be wiped.** If `index.json` can't be read (a truncated write, or an older build after a downgrade), the library loads as empty and the next change saves that empty list over it ([LibraryStore.kt](app/src/main/java/app/murmur/library/LibraryStore.kt)). Keep the unreadable file and rebuild from the saved documents instead.
-- **Writes don't wait for the library to load.** `add`, `replace`, `setStatus` and `delete` don't wait for the index to load, so a share or "Open with" at a cold start can replace the library with one item.
-- **Target SDK 36.** Google Play requires new apps and updates to target Android 16 (API 36) since August 31, 2026; Murmur targets 35.
-- **ML Kit sends usage logs to Google.** On every launch ML Kit queues a `FIREBASE_ML_SDK` event for upload to Firebase logging (seen in the emulator log). This started for everyone when the Google voices switch was removed, and it conflicts with "Nothing you read leaves your phone". Start ML Kit only when Google voices are used (Voice screens or a Google voice selected), off the main thread, and disclose it in the privacy policy and Play's Data safety form.
+**Still open**
 - **Release build never run.** R8 is on and Kotlin 2.3 is paired with AGP 8.7.3, whose R8 may not read Kotlin 2.3 metadata. Build a release once and test voice download, playback, a Google voice's speed and PDF import.
-- **Notification reading stops music for good.** Reading a notification takes permanent audio focus, so Spotify or a podcast app stops and doesn't resume. Use transient focus for notifications.
-- **Large files crash the app.** Files are read whole into memory; a 100 MB PDF or large text file runs out of memory and the app closes.
+- **ML Kit usage logs.** ML Kit now starts only when Google voices are used, but then still sends its usage logs to Google. Disclose it in the privacy policy and Play's Data safety form.
+- **Save for later** runs as a media playback foreground service, which Play's foreground service review may reject. Move imports without playback to WorkManager (`dataSync`).
+- **Launcher icon and splash screen** use the old navy speech bubble; the app uses the violet waveform.
+- **"Read aloud with Murmur"** doesn't appear in Chrome's text selection menu (cause unknown; moving it to its own entry point didn't help).
+- **Startup** is still slow on a loaded emulator in debug builds; check a release build on a phone.
+- **Voice checksums**: the catalog has none, so a corrupted download is only caught when unpacking fails.
 
-**Bugs to fix**
-- Library and reader:
-  - Reload overwrites the saved document in place; dying mid-write leaves an article that won't open. Write a temp file and rename it.
-  - Scrolling to the end outside reader mode marks the article Done and resets the listening place to the start.
-  - Text files with one paragraph per line become a single paragraph: slow, and the reading place can't be kept.
-  - Linked PDFs over 5 MB are rejected ("too large").
-  - Text and HTML files that aren't UTF-8 (Windows Notepad, older files) are garbled.
-  - Delete is immediate, with no confirmation or Undo.
-  - Find in a book-length document runs on the main thread and stutters.
-  - EPUB: notes and covers marked as non-linear are read aloud; two imports at once share one temp file.
-  - Site sign-in starts over if the phone rotates; Close doesn't save cookies right away.
-- Playback and sharing:
-  - A queued item that's deleted leaves the player stuck "playing" with no sound, and every later share goes to the queue.
-  - Pause while a shared page is preparing is ignored; reading starts anyway.
-  - The "Preparing"/"Saving" notification replaces the media controls, and can remove a paused article's controls from the lock screen.
-  - Audio tracks aren't released when an article ends, and can leak on fast seeking.
-  - A second shared PDF can lose its read permission before it's imported.
-  - Save for later runs as a media playback service, which Play's foreground service review may reject.
-- Notification reading:
-  - With no voice installed, tapping Play removes the message, then says a voice is needed.
-  - Message text stays in memory after notification reading is turned off.
-- Voices:
-  - A bad partial download can make a voice impossible to download until the cache is cleared; there are no checksums.
-  - A full disk leaves hundreds of MB of partial files, and there's no space check before downloading.
-  - Deleting a voice runs on the main thread (300+ MB).
-  - Two downloads at once share one progress notification.
-  - A Google voice that's no longer available stays selected.
-  - The download says "Downloading…" while it's extracting.
-- App:
-  - Rotating re-runs how the app was opened: it imports an opened PDF again, or reads the clipboard again.
-  - Notification permission is requested on every launch and rotation until denied twice.
-  - Startup does a lot on the main thread (about 15 objects, ML Kit); a fresh install's first launch hit "not responding" on the emulator.
-  - Welcome flow: after allowing notifications, the page still shows Allow; Skip doesn't download the chosen voice.
-  - The launcher icon and splash screen use the old navy speech bubble; the app uses the violet waveform.
-  - "Read aloud with Murmur" doesn't appear in Chrome's text selection menu (cause unknown).
-- Accessibility:
-  - Sliders (speed, pause, the player's position) have no label for TalkBack.
-  - Compact settings rows are 44dp tall; Android's minimum touch target is 48dp.
+**Fixed in this review**
+- Security: the playback service ignores share, notification and cancel commands without Murmur's private token, and reads shared text files only by name from its cache.
+- Library: an unreadable index is kept and the library rebuilt from saved documents; entries a version can't read are kept; changes wait for the library to load; documents are saved atomically; Undo after Delete.
+- Targets Android 16 (API 36).
+- Google voices (ML Kit) start only when one is selected or a voice screen opens, off the main thread.
+- Notification reading: the article continues afterward even when the notification's sound paused it; other apps' music resumes (temporary audio focus); message text is cleared when reading is turned off; without a voice, Play keeps the message.
+- Import: large PDFs are parsed from a file; text files over 20 MB are refused with a message; linked PDFs up to 100 MB; one-paragraph-per-line text keeps its paragraphs; UTF-16 and Windows-1252 text; EPUB non-linear pages left out; each import has its own temp file; shared files are copied before the share screen closes.
+- Playback: Pause while preparing is respected; a deleted queued item can't leave the player stuck; audio tracks are always released; the Preparing/Saving notification keeps an article's media controls.
+- Reader: scrolling to the end marks Done only in reader mode; Find runs off the main thread.
+- Voices: delete runs in the background; failed downloads are cleaned up; free space is checked; one notification per download; an unavailable Google voice is replaced.
+- App: rotation doesn't re-run how the app was opened; the notification permission is asked once; backup rules leave voices out; import machinery loads on first use.
+- Welcome flow: shows Allowed after allowing; Skip still downloads the chosen voice; shows the download stage.
+- Accessibility: sliders have names for TalkBack; compact rows are 48dp tall.
+- Site sign-in survives rotation and saves cookies on Close.
 
 **Essential features still missing**
 - Library export and import, About page with licenses and source link, privacy policy, Send feedback (below)
-- Undo for Delete
 - A visible queue: sharing can add to a queue, but there's no way to see or change it
 - Voice licenses on the Voice screen (some Piper voices are non-commercial only)
 
 ### Release signing key — Planned
 Release builds are signed with the debug key ([app/build.gradle.kts](app/build.gradle.kts)). Create a release key and keep it outside the repository, with a backup. An app published with one key can't switch to another without users uninstalling first.
 
-### Backup rules — Planned
+### Backup rules — Done
 The manifest allows backup but has no rules, so downloaded voices (30–330 MB each, in `files/voices`) count toward Android's 25 MB cloud backup limit. Once that limit is exceeded, Android skips the backup completely, so the library and settings probably aren't backed up today.
 - Exclude `voices/` and `site-icons/` from cloud backup (`dataExtractionRules` for Android 12+, `fullBackupContent` for older versions)
 - Decide whether device-to-device transfer, which has no size limit, should copy voices
