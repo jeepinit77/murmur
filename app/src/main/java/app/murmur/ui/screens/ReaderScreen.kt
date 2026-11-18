@@ -1,5 +1,6 @@
 package app.murmur.ui.screens
 
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -358,9 +359,12 @@ private fun ReaderScreenBody(
     // Find in article: null when the find bar is closed.
     var findQuery by rememberSaveable { mutableStateOf(initialFind) }
     var findIndex by rememberSaveable { mutableStateOf(0) }
-    val matches = remember(current, findQuery) {
+    // Searched off the main thread, so typing stays smooth in book-length documents; a newer query
+    // cancels the search for the previous one.
+    val matches by produceState(emptyList<TextMatch>(), current, findQuery) {
         val q = findQuery
-        if (current == null || q.isNullOrBlank()) emptyList() else TextSearch.find(current.document, q, limit = MAX_FIND_MATCHES)
+        value = if (current == null || q.isNullOrBlank()) emptyList()
+        else withContext(Dispatchers.Default) { TextSearch.find(current.document, q, limit = MAX_FIND_MATCHES) }
     }
     val matchesByParagraph = remember(matches) { matches.groupBy { it.chapter to it.paragraph } }
     val rowOfParagraph = remember(layout) {
