@@ -437,6 +437,9 @@ class Reader(
         withContext(Dispatchers.IO) {
             var written = 0L
             var t: AudioTrack? = null
+            // Every track made here is released here: when the article ends, and when playback is
+            // cancelled (pause, seek, speed change) even if a newer track replaced it meanwhile.
+            try {
             for (chunk in chunks) {
                 if (t == null || trackRate != chunk.sampleRate) {
                     t?.let { releaseTrack(it) }
@@ -457,6 +460,9 @@ class Reader(
                     coroutineContext.ensureActive()
                     delay(50)
                 }
+            }
+            } finally {
+                t?.let { releaseTrack(it) }
             }
         }
     }
