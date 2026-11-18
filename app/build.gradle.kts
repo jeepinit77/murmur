@@ -9,12 +9,12 @@ plugins {
 
 android {
     namespace = "app.murmur"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.murmur"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
         // sherpa-onnx ships arm64 + armv7 + x86_64 libs; Pixels are arm64. Keep x86_64 for the emulator.
