@@ -309,6 +309,15 @@ suspend fun SpeakRequest.import(context: Context, onStage: (String) -> Unit, imp
     val c = context.container
     return when {
         uri != null -> c.imports.save(c.importer.fromUri(uri, mime))
+        sharedFile != null -> {
+            val f = sharedFile(context) ?: error("Nothing to read")
+            try {
+                // The display name after the "shared-<number>-" prefix, for the title and file type.
+                c.imports.save(c.importer.fromUri(android.net.Uri.fromFile(f), mime, f.name.substringAfter('-').substringAfter('-')))
+            } finally {
+                f.delete()
+            }
+        }
         textFile != null -> {
             val f = sharedTextFile(context) ?: error("Nothing to read")
             val text = f.readText()
@@ -339,10 +348,33 @@ data class SpeakRequest(
     val mime: String? = null,
     /** Large text is passed through a cache file to stay under the Binder size limit. */
     val textFile: String? = null,
+    /** A shared file copied into Murmur's cache (see [withLocalCopy]), by name; its display name follows the last "-". */
+    val sharedFile: String? = null,
     /** For a link already in the library: fetch it again and replace the saved copy. */
     val importAgain: Boolean = false,
     val action: ShareAction = ShareAction.READ,
 ) {
+    /**
+     * The same request with a shared file copied into Murmur's cache. The permission to read a
+     * shared file belongs to the screen it was shared to and can end when that screen closes,
+     * before the service gets to it, so the service reads the copy instead.
+     */
+    fun withLocalCopy(context: Context): SpeakRequest {
+        val shared = uri ?: return this
+        val name = runCatching {
+            context.contentResolver.query(shared, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: shared.lastPathSegment ?: "Document"
+        val file = File(context.cacheDir, "shared-${System.nanoTime()}-${name.replace(UNSAFE_NAME_CHARS, "_").take(80)}")
+        val input = context.contentResolver.openInputStream(shared) ?: return this
+        input.use { i -> file.outputStream().use { i.copyTo(it) } }
+        return copy(uri = null, sharedFile = file.name)
+    }
+
+    /** The copied shared file, if it has Murmur's naming and is in its cache folder. */
+    fun sharedFile(context: Context): File? =
+        sharedFile?.takeIf { SHARED_FILE_NAME.matches(it) }?.let { File(context.cacheDir, it) }
+
     fun label(): String = subject?.takeIf { it.isNotBlank() }
         ?: linkUrl()?.let { link -> SharedLink.parse(text.orEmpty())?.titleHint ?: UrlNormalizer.displayHost(link) }
         ?: text?.trim()?.lineSequence()?.firstOrNull()?.take(60)?.takeIf { it.isNotBlank() }
@@ -357,6 +389,7 @@ data class SpeakRequest(
         if (importAgain) intent.putExtra(EXTRA_IMPORT_AGAIN, true)
         intent.putExtra(EXTRA_ACTION, action.name)
         html?.let { intent.putExtra(EXTRA_HTML, it.take(MAX_INLINE)) }
+        sharedFile?.let { intent.putExtra(EXTRA_SHARED_FILE, it) }
         if (uri != null) {
             intent.putExtra(EXTRA_URI, uri)
             // Hand our read grant on to the service for as long as it runs.
@@ -386,6 +419,9 @@ data class SpeakRequest(
         private const val EXTRA_URI = "uri"
         private const val EXTRA_MIME = "mime"
         private const val EXTRA_TEXT_FILE = "text_file"
+        private const val EXTRA_SHARED_FILE = "shared_file"
+        private val SHARED_FILE_NAME = Regex("shared-\\d+-[^/\\\\]+")
+        private val UNSAFE_NAME_CHARS = Regex("[^A-Za-z0-9._ -]")
         private const val EXTRA_IMPORT_AGAIN = "import_again"
         private const val EXTRA_ACTION = "share_action"
         private const val MAX_INLINE = 200_000
@@ -399,11 +435,12 @@ data class SpeakRequest(
                 uri = IntentCompat.getParcelableExtra(intent, EXTRA_URI, Uri::class.java),
                 mime = intent.getStringExtra(EXTRA_MIME),
                 textFile = intent.getStringExtra(EXTRA_TEXT_FILE),
+                sharedFile = intent.getStringExtra(EXTRA_SHARED_FILE),
                 importAgain = intent.getBooleanExtra(EXTRA_IMPORT_AGAIN, false),
                 action = runCatching { ShareAction.valueOf(intent.getStringExtra(EXTRA_ACTION) ?: "") }
                     .getOrDefault(ShareAction.READ),
             )
-            return if (r.text == null && r.html == null && r.uri == null && r.textFile == null) null else r
+            return if (r.text == null && r.html == null && r.uri == null && r.textFile == null && r.sharedFile == null) null else r
         }
     }
 }

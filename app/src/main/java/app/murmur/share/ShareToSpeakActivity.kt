@@ -85,7 +85,12 @@ class ShareToSpeakActivity : Activity() {
         /** Hands [request] to the playback service and says whether it's reading or queued. */
         fun start(context: Context, request: SpeakRequest) {
             val c = context.container
-            PlaybackService.speak(context, request)
+            // A shared file is copied while the calling screen still holds permission to read it.
+            val local = runCatching { request.withLocalCopy(context) }.getOrElse {
+                Toast.makeText(context, R.string.nothing_to_read, Toast.LENGTH_SHORT).show()
+                return
+            }
+            PlaybackService.speak(context, local)
             // The service says when a saved item is ready.
             if (request.action == ShareAction.SAVE) return
             val queueWhenBusy = request.action == ShareAction.QUEUE || c.settings.shareMode.value == ShareMode.QUEUE
