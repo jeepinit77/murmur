@@ -68,6 +68,9 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
     private val _voices = MutableStateFlow<List<Voice>>(emptyList())
     override val voices: StateFlow<List<Voice>> = _voices.asStateFlow()
 
+    private val _loaded = MutableStateFlow(false)
+    override val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     /** Packages (one per language) removed from Murmur with Delete; their voices count as not installed. */
     private var removed: Set<String> = prefs.getStringSet(KEY_REMOVED, null).orEmpty().toSet()
 
@@ -90,6 +93,8 @@ class MlKitVoiceSource(context: Context, private val scope: CoroutineScope) : Pl
                 throw e
             } catch (e: Throwable) {
                 Log.w(TAG, "Google voices unavailable", e)
+            } finally {
+                _loaded.value = true
             }
         }
     }

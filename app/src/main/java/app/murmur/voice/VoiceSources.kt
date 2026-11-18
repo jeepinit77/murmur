@@ -24,6 +24,10 @@ class VoiceSources(
         .stateIn(scope, SharingStarted.Eagerly, sources.flatMap { it.installed.value }.toSet())
 
     init {
+        // Re-check the selection when a slow source finishes loading.
+        scope.launch {
+            combine(sources.map { it.loaded }) { it.all { done -> done } }.collect { ensureSelection(installed.value) }
+        }
         val selected = settings.voice.value
         sources.filter { !it.startsOnDemand || selected?.startsWith("${it.id}:") == true }.forEach { it.activate() }
         // Keep a downloaded voice selected, so share-to-speak works right after the first download.
@@ -71,9 +75,10 @@ class VoiceSources(
         val current = settings.voice.value
         if (current != null && current in ready) return
         // A source (Google voices) may still be loading at startup; don't replace its voice yet.
+        // Once it has loaded, a voice it doesn't have (Google's app removed) is replaced.
         val currentSource = current?.substringBefore(':')
         val stillLoading = current != null && byId(current) == null &&
-            currentSource != SherpaVoiceSource.ID && sources.any { it.id == currentSource }
+            currentSource != SherpaVoiceSource.ID && sources.any { it.id == currentSource && !it.loaded.value }
         if (stillLoading) return
         fallback(ready)?.let { settings.setVoice(it) }
     }

@@ -64,6 +64,9 @@ sealed interface VoiceSource {
     /** Called before the source is used; a source may wait for this before loading anything. */
     fun activate() {}
 
+    /** True once the voice list has loaded (or failed to); until then its voices may be missing. */
+    val loaded: StateFlow<Boolean> get() = ALWAYS_LOADED
+
     /**
      * True for a source that's costly to start (Google voices: ML Kit starts Google services and
      * sends usage logs). It's activated only when one of its voices is selected, or when a screen
@@ -102,3 +105,5 @@ sealed interface DownloadState {
     data class Running(val fraction: Float?, val phase: String) : DownloadState
     data class Failed(val message: String) : DownloadState
 }
+
+private val ALWAYS_LOADED: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true)
