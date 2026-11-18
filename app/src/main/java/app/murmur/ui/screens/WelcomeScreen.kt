@@ -110,6 +110,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun askForNotifications() {
         permissionAsked = true
+        c.settings.notificationPermissionAsked = true
         if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
     fun finish() {

@@ -317,6 +317,11 @@ class Settings(context: Context) {
         prefs.edit { putString("$KEY_NR_RULE$pkg", rule.encode()) }
     }
 
+    /** Murmur has asked for permission to post notifications; it isn't asked again. */
+    var notificationPermissionAsked: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, value) }
+
     /** The welcome flow was finished or skipped. */
     var welcomeDone: Boolean
         get() = prefs.getBoolean(KEY_WELCOME_DONE, false)
@@ -428,5 +433,6 @@ class Settings(context: Context) {
         private const val KEY_NR_RULE = "notification_autoplay_rule_"
         private const val KEY_NR_TIP_DISMISSED = "notification_tip_dismissed"
         private const val KEY_WELCOME_DONE = "welcome_done"
+        private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
     }
 }

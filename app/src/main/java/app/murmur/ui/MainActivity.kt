@@ -68,7 +68,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // New installs see the welcome flow, which asks for this with its reason.
         val showWelcome = !container.settings.welcomeDone && !container.voices.hasAnyInstalled()
-        if (!showWelcome && Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        // Asked once, not at every launch and rotation; after that it's in Android's app settings.
+        if (!showWelcome && savedInstanceState == null && Build.VERSION.SDK_INT >= 33 &&
+            !container.settings.notificationPermissionAsked
+        ) {
+            container.settings.notificationPermissionAsked = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         // A recreated activity (rotation, process death) or one reopened from Recents still holds
         // the intent it was first opened with; handling it again would import or read it again.
         val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
