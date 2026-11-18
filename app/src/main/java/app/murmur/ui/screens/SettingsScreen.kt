@@ -1,5 +1,6 @@
 package app.murmur.ui.screens
 
+import androidx.compose.foundation.layout.heightIn
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -134,7 +135,12 @@ private fun CategoryGroup(vararg items: Category) {
 /** One category's settings on its own page. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit, onWelcome: () -> Unit = {}) {
+fun SettingsPageScreen(
+    page: SettingsPage,
+    onBack: () -> Unit,
+    onWelcome: () -> Unit = {},
+    onAboutPage: (String) -> Unit = {},
+) {
     Scaffold(topBar = { TopAppBar(title = { Text(page.title) }, navigationIcon = { BackIcon(onBack) }) }) { padding ->
         Column(
             Modifier
@@ -149,7 +155,7 @@ fun SettingsPageScreen(page: SettingsPage, onBack: () -> Unit, onWelcome: () -> 
                 SettingsPage.APPEARANCE -> AppearanceSettings()
                 SettingsPage.READING -> ReadingSettings()
                 SettingsPage.SHARING -> SharingSettings()
-                SettingsPage.ABOUT -> AboutSettings(onWelcome)
+                SettingsPage.ABOUT -> AboutSettings(onWelcome, onAboutPage)
             }
         }
     }
@@ -370,18 +376,28 @@ private fun ReadingSettings() {
 }
 
 @Composable
-private fun AboutSettings(onWelcome: () -> Unit) {
+private fun AboutSettings(onWelcome: () -> Unit, onAboutPage: (String) -> Unit) {
     SettingsGroup {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Version", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SectionDivider(start = 14.dp)
         NavigationRow("Welcome tour", description = "Choosing a voice, adding things to read, and what else Murmur does", onClick = onWelcome)
     }
     SettingsGroup {
-        Text(
-            "Murmur ${BuildConfig.VERSION_NAME} — free and open source (GPL-3.0). Speech runs on-device with " +
-                "sherpa-onnx and ONNX Runtime; no text or audio leaves your phone. Voice models are by their " +
-                "respective authors, under their own licenses.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-        )
+        NavigationRow("Privacy", description = "What stays on your phone and what Murmur downloads") { onAboutPage(ABOUT_PRIVACY) }
+        SectionDivider(start = 14.dp)
+        NavigationRow("Open source licenses", description = null) { onAboutPage(ABOUT_LICENSES) }
+        SectionDivider(start = 14.dp)
+        NavigationRow("Voice credits", description = "Who made each voice, and its license") { onAboutPage(ABOUT_VOICES) }
     }
 }
+
+/** Pages opened from About. */
+const val ABOUT_PRIVACY = "privacy"
+const val ABOUT_LICENSES = "licenses"
+const val ABOUT_VOICES = "voice-credits"

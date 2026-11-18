@@ -40,6 +40,12 @@ import app.murmur.ui.screens.SettingsScreen
 import app.murmur.ui.screens.SettingsPage
 import app.murmur.ui.screens.SettingsPageScreen
 import app.murmur.ui.screens.DownloadVoicesScreen
+import app.murmur.ui.screens.ABOUT_LICENSES
+import app.murmur.ui.screens.ABOUT_PRIVACY
+import app.murmur.ui.screens.ABOUT_VOICES
+import app.murmur.ui.screens.LicensesScreen
+import app.murmur.ui.screens.PrivacyScreen
+import app.murmur.ui.screens.VoiceCreditsScreen
 import app.murmur.ui.screens.WelcomeScreen
 import app.murmur.ui.screens.VoicesScreen
 import com.google.common.util.concurrent.ListenableFuture
@@ -174,7 +180,22 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("$ROUTE_SETTINGS/{page}") { entry ->
                         val page = SettingsPage.fromRoute(entry.arguments?.getString("page"))
-                        if (page != null) SettingsPageScreen(page, onBack = { nav.popBackStack() }, onWelcome = { nav.navigate(ROUTE_WELCOME) })
+                        if (page != null) {
+                            SettingsPageScreen(
+                                page,
+                                onBack = { nav.popBackStack() },
+                                onWelcome = { nav.navigate(ROUTE_WELCOME) },
+                                onAboutPage = { nav.navigate("$ROUTE_ABOUT/$it") },
+                            )
+                        }
+                    }
+                    composable("$ROUTE_ABOUT/{page}") { entry ->
+                        val back = { nav.popBackStack(); Unit }
+                        when (entry.arguments?.getString("page")) {
+                            ABOUT_PRIVACY -> PrivacyScreen(back)
+                            ABOUT_LICENSES -> LicensesScreen(back)
+                            ABOUT_VOICES -> VoiceCreditsScreen(back)
+                        }
                     }
                     composable(ROUTE_NOTIFICATION_READING) { NotificationReadingScreen(onBack = { nav.popBackStack() }) }
                     composable(ROUTE_WELCOME) {
@@ -280,6 +301,7 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_VOICE_DOWNLOADS = "voice_downloads"
         const val ROUTE_SETTINGS = "settings"
         const val ROUTE_WELCOME = "welcome"
+        const val ROUTE_ABOUT = "about"
         const val ROUTE_NOTIFICATION_READING = "notification_reading"
     }
 }
