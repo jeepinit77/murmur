@@ -67,18 +67,18 @@ class Importer(
         }
     }
 
-    suspend fun fromUri(uri: Uri, mimeHint: String? = null): Imported = withContext(Dispatchers.IO) {
+    suspend fun fromUri(uri: Uri, mimeHint: String? = null, nameHint: String? = null): Imported = withContext(Dispatchers.IO) {
         try {
-            importUri(uri, mimeHint)
+            importUri(uri, mimeHint, nameHint)
         } catch (e: OutOfMemoryError) {
             throw ImportException("This file is too large to import")
         }
     }
 
-    private suspend fun importUri(uri: Uri, mimeHint: String?): Imported {
+    private suspend fun importUri(uri: Uri, mimeHint: String?, nameHint: String?): Imported {
         val resolver = context.contentResolver
         val mime = mimeHint?.takeIf { it != "*/*" } ?: resolver.getType(uri).orEmpty()
-        val name = displayName(uri) ?: uri.lastPathSegment ?: "Document"
+        val name = nameHint ?: displayName(uri) ?: uri.lastPathSegment ?: "Document"
         val lower = name.lowercase()
         fun open(): InputStream = resolver.openInputStream(uri) ?: throw ImportException("Can't open $name")
         fun copyTo(file: File) = open().use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -92,9 +92,9 @@ class Importer(
                 Imported(doc, name, KIND_EPUB)
             }
             mime == "text/html" || lower.endsWith(".html") || lower.endsWith(".htm") ->
-                fromHtml(open().use { readCapped(it, name) }.toString(Charsets.UTF_8), name.substringBeforeLast('.'))
+                fromHtml(decodeText(open().use { readCapped(it, name) }, html = true), name.substringBeforeLast('.'))
             else -> {
-                val text = open().use { readCapped(it, name) }.toString(Charsets.UTF_8)
+                val text = decodeText(open().use { readCapped(it, name) }, html = false)
                 val doc = withTables { mode, tables -> PlainText.toDocument(text, name.substringBeforeLast('.'), mode, tables) }
                 if (doc.isEmpty) throw ImportException("Nothing to read in $name")
                 Imported(doc, name, KIND_TEXT)
@@ -140,6 +140,31 @@ class Importer(
         } finally {
             file.delete()
         }
+    }
+
+    /**
+     * Decodes a text or HTML file: a byte-order mark first (UTF-8, or UTF-16 from Windows Notepad),
+     * then an HTML charset declaration, then UTF-8 if the bytes are valid UTF-8, otherwise
+     * Windows-1252, the usual encoding of older Western text files.
+     */
+    private fun decodeText(bytes: ByteArray, html: Boolean): String {
+        fun startsWith(vararg b: Int) = bytes.size >= b.size && b.indices.all { bytes[it] == b[it].toByte() }
+        when {
+            startsWith(0xEF, 0xBB, 0xBF) -> return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+            startsWith(0xFF, 0xFE) -> return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+            startsWith(0xFE, 0xFF) -> return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+        }
+        if (html) {
+            val head = String(bytes, 0, minOf(bytes.size, 2048), Charsets.ISO_8859_1)
+            Regex("""<meta[^>]+charset=["']?([\w-]+)""", RegexOption.IGNORE_CASE).find(head)?.groupValues?.get(1)
+                ?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() }
+                ?.let { return String(bytes, it) }
+        }
+        val utf8 = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        return runCatching { utf8.decode(java.nio.ByteBuffer.wrap(bytes)).toString() }
+            .getOrElse { String(bytes, java.nio.charset.Charset.forName("windows-1252")) }
     }
 
     /** Reads a text or HTML file, refusing ones too large to hold as text. */
