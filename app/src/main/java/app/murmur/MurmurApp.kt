@@ -107,15 +107,16 @@ class AppContainer(context: Context) {
     )
     val library = LibraryStore(context, appScope)
     /** On-device table summaries; null in the foss build. */
-    val tableAi = tableAi(context, appScope)
-    val importer = Importer(context, settings, tableAi)
-    val web = WebImporter(PageFetcher(http), WebViewRenderer(context), importer::readPdf, tableAi)
+    // Import machinery is created on first use rather than at every launch.
+    val tableAi by lazy { tableAi(context, appScope) }
+    val importer by lazy { Importer(context, settings, tableAi) }
+    val web by lazy { WebImporter(PageFetcher(http), WebViewRenderer(context), importer::readPdf, tableAi) }
     /** Site icons for library rows. */
     val siteIcons = SiteIcons(context, http, appScope)
-    val imports = Imports(context, importer, web, library, settings, siteIcons)
+    val imports by lazy { Imports(context, importer, web, library, settings, siteIcons) }
     val reader = Reader(context, appScope, voices, settings, library)
     /** Table summaries postponed because Gemini Nano only runs while Murmur is on screen. */
-    val pendingTables = PendingTableSummaries(library, settings, tableAi, reader, appScope)
+    val pendingTables by lazy { PendingTableSummaries(library, settings, tableAi, reader, appScope) }
     /** Loading and error sounds, driven by the reader's state. */
     val cues = SoundCues(reader, settings, appScope).also { it.start() }
     /** Notifications from other apps waiting to be read; kept in memory only. */
