@@ -540,7 +540,7 @@ private fun MorePage(chosenPackage: String?) {
                         Text(
                             when {
                                 chosen.any { it.id in installed } -> "Ready"
-                                state is DownloadState.Running -> "Downloading…"
+                                state is DownloadState.Running -> "${(state as DownloadState.Running).phase}…"
                                 state is DownloadState.Failed -> (state as DownloadState.Failed).message
                                 else -> "Waiting to download"
                             },
