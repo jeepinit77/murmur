@@ -66,7 +66,10 @@ class SiteSignInActivity : ComponentActivity() {
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            navigationIcon = { IconButton(onClick = { finish() }) { Icon(Icons.Default.Close, "Close") } },
+                            // Cookies are saved on Close too, so a sign-in finished on the site isn't lost.
+                            navigationIcon = {
+                                IconButton(onClick = { CookieManager.getInstance().flush(); finish() }) { Icon(Icons.Default.Close, "Close") }
+                            },
                             title = {
                                 Column {
                                     Text("Sign in to site", style = MaterialTheme.typography.titleMedium)
