@@ -417,6 +417,7 @@ fun LibraryScreen(
                                 val undone = CompletableDeferred<Boolean>()
                                 c.appScope.launch {
                                     if (withTimeoutOrNull(UNDO_WINDOW_MS) { undone.await() } == true) return@launch
+                                    c.reader.removeFromQueue(doc.id)
                                     c.library.delete(doc.id)
                                     val site = c.siteIcons.key(doc.source)
                                     if (site != null && c.library.docs.value.none { it.id != doc.id && c.siteIcons.key(it.source) == site }) {

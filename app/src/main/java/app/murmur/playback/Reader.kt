@@ -242,6 +242,14 @@ class Reader(
         open(docId, document, startIndex = 0, autoplay = true)
     }
 
+    /** The "Preparing" placeholder is showing and hasn't been paused. */
+    fun isPreparingToPlay(): Boolean = _state.value.let { it.docId == PREPARING_ID && it.playWhenReady }
+
+    /** Drops a deleted item from the queue. */
+    fun removeFromQueue(docId: String) {
+        if (queue.removeAll { it == docId }) _state.update { it.copy(queueSize = queue.size) }
+    }
+
     fun enqueue(docId: String) {
         queue.addLast(docId)
         _state.update { it.copy(queueSize = queue.size) }
@@ -504,8 +512,18 @@ class Reader(
         val nextId = queue.removeFirstOrNull()
         _state.update { it.copy(queueSize = queue.size) }
         if (nextId != null) {
-            // Launched separately: opening cancels the current play job, which is this one.
-            scope.launch { openFromLibrary(nextId, autoplay = true) }
+            // Launched separately: opening cancels the current play job, which is this one. An
+            // item that can't be opened (deleted meanwhile) is skipped instead of leaving the
+            // player stuck "playing" with no sound.
+            scope.launch {
+                if (!openFromLibrary(nextId, autoplay = true)) {
+                    _state.update { it.copy(playWhenReady = false, buffering = false, ended = true, currentIndex = 0) }
+                    stoppedAt = SystemClock.elapsedRealtime()
+                    unregisterNoisy()
+                    abandonFocus()
+                    if (queue.isNotEmpty()) onEnded(content)
+                }
+            }
             return
         }
         stoppedAt = SystemClock.elapsedRealtime()

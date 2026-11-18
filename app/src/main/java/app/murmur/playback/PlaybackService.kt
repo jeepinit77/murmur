@@ -191,7 +191,9 @@ class PlaybackService : MediaSessionService() {
                 toast(getString(if (outcome.existing) R.string.queued_saved else R.string.queued))
             } else {
                 if (outcome.existing) toast(getString(R.string.resuming_saved))
-                c.reader.open(outcome.meta.id, outcome.document, startIndex = if (outcome.existing) null else 0, autoplay = true)
+                // Pausing while the page was being prepared means don't start reading it.
+                val pausedWhilePreparing = showInPlayer && !c.reader.isPreparingToPlay()
+                c.reader.open(outcome.meta.id, outcome.document, startIndex = if (outcome.existing) null else 0, autoplay = !pausedWhilePreparing)
                 c.reader.state.value.notice?.let { toast(it) }
             }
             if (!outcome.existing && outcome.document.incomplete) {
