@@ -38,6 +38,14 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         runCatching { setForeground(foregroundInfo(pack.name, null)) }
 
         val archive = File(applicationContext.cacheDir, "voice-$id.tar.bz2")
+        val tmp = File(c.packs.root, "$id.tmp")
+        // The archive plus the unpacked voice need room; unpacked voices are about twice the download.
+        pack.sizeMb?.let { mb ->
+            val needed = mb * 3L * 1_000_000L - (if (archive.exists()) archive.length() else 0L)
+            if (applicationContext.filesDir.usableSpace < needed) {
+                return@withContext fail("Not enough storage. This voice needs about ${mb * 3} MB free.")
+            }
+        }
         try {
             download(pack.url, archive, pack.name)
             pack.sha256?.let { expected ->
@@ -49,9 +57,15 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
                 }
             }
             report("Unpacking", null, pack.name)
-            val tmp = File(c.packs.root, "$id.tmp")
             tmp.deleteRecursively()
-            extract(archive, tmp)
+            try {
+                extract(archive, tmp)
+            } catch (e: IOException) {
+                // A damaged or mismatched archive would fail the same way on every retry: start over.
+                archive.delete()
+                tmp.deleteRecursively()
+                throw e
+            }
             val dest = c.packs.dirFor(id)
             dest.deleteRecursively()
             if (!tmp.renameTo(dest)) throw IOException("Could not move voice into place")
@@ -60,7 +74,11 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             if (c.packs.filesFor(id) == null) return@withContext fail("Archive did not contain a usable model")
             Result.success()
         } catch (e: IOException) {
-            if (runAttemptCount < 3) Result.retry() else fail(e.message ?: "Download failed")
+            if (runAttemptCount < 3) return@withContext Result.retry()
+            // Giving up: don't leave hundreds of MB of partial files behind.
+            archive.delete()
+            tmp.deleteRecursively()
+            fail(e.message ?: "Download failed")
         }
     }
 
@@ -71,7 +89,11 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             .apply { if (existing > 0) header("Range", "bytes=$existing-") }
             .build()
         http.newCall(request).execute().use { response ->
-            if (response.code == 416) return // already complete
+            if (response.code == 416) {
+                // The saved part doesn't fit the file on the server (it may have changed): start over.
+                target.delete()
+                throw IOException("Download changed on the server; trying again")
+            }
             if (!response.isSuccessful) throw IOException("HTTP ${response.code} for $url")
             val resumed = response.code == 206
             val body = response.body ?: throw IOException("Empty response")
@@ -154,7 +176,9 @@ class VoiceDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             .setOnlyAlertOnce(true)
             .setProgress(100, ((fraction ?: 0f) * 100).toInt(), fraction == null)
             .build()
-        return ForegroundInfo(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        // One notification per voice, so two downloads don't overwrite each other's progress.
+        val notificationId = NOTIFICATION_ID + ((inputData.getString(KEY_ID)?.hashCode() ?: 0) and 0xffff)
+        return ForegroundInfo(notificationId, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     private fun fail(message: String) = Result.failure(workDataOf(KEY_ERROR to message))

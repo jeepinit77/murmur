@@ -74,9 +74,15 @@ class VoiceRepository(private val context: Context) {
             }
         }
 
+    /** Removes a downloaded voice; its files (hundreds of MB) are deleted off the main thread. */
     fun delete(id: String) {
-        dirFor(id).deleteRecursively()
+        val dir = dirFor(id)
+        // Renamed first, so the voice disappears from the list at once and a crash mid-delete
+        // leaves a folder the scan ignores rather than a half-deleted voice.
+        val doomed = File(dir.parentFile, "${dir.name}.deleting-${System.nanoTime()}.tmp")
+        val target = if (dir.renameTo(doomed)) doomed else dir
         refresh()
+        Thread({ target.deleteRecursively(); if (target === dir) android.os.Handler(android.os.Looper.getMainLooper()).post { refresh() } }, "VoiceDelete").start()
     }
 
     private fun scan(): Set<String> =
