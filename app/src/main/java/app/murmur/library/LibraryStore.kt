@@ -100,11 +100,17 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
 
     init {
         scope.launch(Dispatchers.IO) {
-            val list = readIndex()
-            _docs.value = list.sortedByDescending { it.addedAt }
-            _progress.value = list.associate { it.id to progressPrefs.getInt(it.id, 0) }
-            _finished.value = list.mapTo(mutableSetOf()) { it.id }.filterTo(mutableSetOf()) { finishedPrefs.getBoolean(it, false) }
-            loaded.complete(Unit)
+            try {
+                val list = readIndex()
+                _docs.value = list.sortedByDescending { it.addedAt }
+                _progress.value = list.associate { it.id to progressPrefs.getInt(it.id, 0) }
+                _finished.value = list.mapTo(mutableSetOf()) { it.id }.filterTo(mutableSetOf()) { finishedPrefs.getBoolean(it, false) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't load the library", e)
+            } finally {
+                // Changes wait for this, so it must happen even if loading failed.
+                loaded.complete(Unit)
+            }
             backfill()
         }
     }
@@ -132,6 +138,8 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         segmentCount: Int,
         urlKeys: List<String> = emptyList(),
     ): DocMeta = withContext(Dispatchers.IO) {
+        // Changes build on the loaded list; one made before it loads would replace the library.
+        loaded.await()
         mutex.withLock {
             val meta = DocMeta(
                 id = UUID.randomUUID().toString(),
@@ -153,6 +161,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     /** Adds a link that couldn't be imported yet, so it can be retried later. */
     suspend fun addPending(title: String, url: String, urlKeys: List<String>, error: String?): DocMeta =
         withContext(Dispatchers.IO) {
+            loaded.await()
             mutex.withLock {
                 val meta = DocMeta(
                     id = UUID.randomUUID().toString(),
@@ -175,6 +184,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     /** Replaces a document's content in place, keeping its id, position in the list and added date. */
     suspend fun replace(id: String, document: Document, source: String, kind: String, segmentCount: Int, urlKeys: List<String>): DocMeta? =
         withContext(Dispatchers.IO) {
+            loaded.await()
             mutex.withLock {
                 val old = _docs.value.firstOrNull { it.id == id } ?: return@withContext null
                 File(dir, "$id.json").writeText(json.encodeToString(Document.serializer(), document))
@@ -192,6 +202,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
 
     /** Updates the status of a pending or failed link. */
     suspend fun setStatus(id: String, status: DocStatus, error: String?) = withContext(Dispatchers.IO) {
+        loaded.await()
         mutex.withLock {
             val list = _docs.value.map { if (it.id == id) it.copy(status = status, error = error) else it }
             writeIndex(list)
@@ -253,6 +264,7 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
 
     fun delete(id: String) {
         scope.launch(Dispatchers.IO) {
+            loaded.await()
             mutex.withLock {
                 File(dir, "$id.json").delete()
                 searchCache.remove(id)
