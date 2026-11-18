@@ -449,6 +449,14 @@ private fun DownloadRow(c: AppContainer, d: Download, isInstalled: Boolean, shap
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Some voices may only be used non-commercially; say so before downloading.
+                pkg.license?.takeIf { it.contains("non-commercial", ignoreCase = true) || it.contains("-NC", ignoreCase = true) }?.let {
+                    Text(
+                        "Non-commercial use only ($it)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 when (val s = state) {
                     is DownloadState.Running -> {
                         val fraction = s.fraction
