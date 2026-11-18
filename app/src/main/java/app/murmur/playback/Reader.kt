@@ -229,7 +229,15 @@ class Reader(
             return
         }
         if (cur != null && !isEphemeral(cur.docId) && s.docId == cur.docId) {
-            resumeAfter = Resume(cur.docId, s.currentIndex, s.playWhenReady && !s.ended)
+            // The app that posted the notification often plays its own sound first, which pauses
+            // the article briefly (transient focus loss). That still counts as playing, so the
+            // article continues after the notification instead of staying paused.
+            val interrupted = resumeOnFocusGain?.let {
+                it.docId == cur.docId && SystemClock.elapsedRealtime() - it.pausedAt < FOCUS_RESUME_LIMIT_MS
+            } == true
+            resumeAfter = Resume(cur.docId, s.currentIndex, (s.playWhenReady || interrupted) && !s.ended)
+            // The notification takes over now; focus coming back mustn't restart the article mid-notification.
+            resumeOnFocusGain = null
         }
         open(docId, document, startIndex = 0, autoplay = true)
     }
