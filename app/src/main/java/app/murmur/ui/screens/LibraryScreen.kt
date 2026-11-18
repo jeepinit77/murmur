@@ -1,5 +1,11 @@
 package app.murmur.ui.screens
 
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.CompletableDeferred
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.os.Build
@@ -146,6 +152,9 @@ fun LibraryScreen(
     val context = LocalContext.current
     val c = context.container
     val docs by c.library.docs.collectAsStateWithLifecycle()
+    // Deleted items disappear at once but are only removed after the Undo message has gone.
+    val snackbar = remember { SnackbarHostState() }
+    var pendingDeletes by remember { mutableStateOf(emptySet<String>()) }
     val progress by c.library.progress.collectAsStateWithLifecycle()
     val state by c.reader.state.collectAsStateWithLifecycle()
     val playingContent by c.reader.content.collectAsStateWithLifecycle()
@@ -222,6 +231,7 @@ fun LibraryScreen(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (searching) {
                 SearchTopBar(
@@ -356,7 +366,7 @@ fun LibraryScreen(
                 EmptyLibrary()
             } else {
                 FilterChips(filter, onChange = { filter = it })
-                val shown = docs.filter { filter.matches(it, progress[it.id] ?: 0, it.id in finished) }
+                val shown = docs.filter { it.id !in pendingDeletes && filter.matches(it, progress[it.id] ?: 0, it.id in finished) }
                 if (shown.isEmpty()) {
                     Text(
                         filter.emptyText, style = MaterialTheme.typography.bodyLarge,
@@ -401,10 +411,27 @@ fun LibraryScreen(
                             onSetFinished = { done -> c.library.setFinished(doc.id, done) },
                             onDelete = {
                                 if (state.docId == doc.id) c.reader.close()
-                                c.library.delete(doc.id)
-                                val site = c.siteIcons.key(doc.source)
-                                if (site != null && docs.none { it.id != doc.id && c.siteIcons.key(it.source) == site }) {
-                                    c.siteIcons.remove(doc.source)
+                                pendingDeletes = pendingDeletes + doc.id
+                                // The removal waits for the Undo message's outcome. It runs in the app's scope,
+                                // so leaving the library doesn't cancel it; without an answer it goes ahead.
+                                val undone = CompletableDeferred<Boolean>()
+                                c.appScope.launch {
+                                    if (withTimeoutOrNull(UNDO_WINDOW_MS) { undone.await() } == true) return@launch
+                                    c.library.delete(doc.id)
+                                    val site = c.siteIcons.key(doc.source)
+                                    if (site != null && c.library.docs.value.none { it.id != doc.id && c.siteIcons.key(it.source) == site }) {
+                                        c.siteIcons.remove(doc.source)
+                                    }
+                                }
+                                scope.launch {
+                                    val result = snackbar.showSnackbar(
+                                        "Deleted “${doc.title}”",
+                                        actionLabel = "Undo",
+                                        duration = SnackbarDuration.Long,
+                                    )
+                                    val undo = result == SnackbarResult.ActionPerformed
+                                    undone.complete(undo)
+                                    if (undo) pendingDeletes = pendingDeletes - doc.id
                                 }
                             },
                         )
@@ -816,3 +843,6 @@ fun TextInputDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/** How long Undo is offered after deleting a library item. */
+private const val UNDO_WINDOW_MS = 15_000L
