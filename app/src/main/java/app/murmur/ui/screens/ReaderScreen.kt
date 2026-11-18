@@ -66,6 +66,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import app.murmur.container
+import app.murmur.playback.Reader
 import app.murmur.playback.ReaderContent
 import app.murmur.text.Document
 import app.murmur.text.ListeningTime
@@ -306,8 +307,10 @@ private fun ReaderScreenBody(
             .distinctUntilChanged()
             .drop(1) // where the screen already was
             .collect { index ->
-                if (!listState.canScrollForward) c.library.setFinished(id, true)
+                // Outside reader mode scrolling is only looking around: it mustn't mark the article
+                // Done, which would also reset where listening continues. Notifications are never saved.
                 if (!readerMode) return@collect
+                if (!listState.canScrollForward && !Reader.isEphemeral(id)) c.library.setFinished(id, true)
                 val saved = if (inPlayerNow) reader.state.value.currentIndex else c.library.progressOf(id)
                 if (l.second.getOrNull(saved) != l.second.getOrNull(index)) {
                     if (inPlayerNow) reader.seekTo(index) else c.library.setProgress(id, index)
