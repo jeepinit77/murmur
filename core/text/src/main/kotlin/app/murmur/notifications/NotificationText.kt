@@ -170,6 +170,8 @@ class NotificationBatcher(private val maxSeen: Int = 1000) {
         val shown = n.messages.map { it.sender to it.text }
         val previous = lastShown[n.conversationKey].orEmpty()
         lastShown[n.conversationKey] = shown
+        // Keep only recent conversations' text, so message text doesn't build up in memory.
+        if (lastShown.size > MAX_CONVERSATIONS) lastShown.keys.firstOrNull { it !in batches && it != n.conversationKey }?.let { lastShown.remove(it) }
         val overlap = (minOf(shown.size, previous.size) downTo 1).firstOrNull { k ->
             shown.subList(0, k) == previous.subList(previous.size - k, previous.size)
         } ?: 0
@@ -234,7 +236,13 @@ class NotificationBatcher(private val maxSeen: Int = 1000) {
         return b
     }
 
-    fun clear() = batches.clear()
+    /** Forgets everything, including the message text kept to recognize reposted conversations. */
+    fun clear() {
+        batches.clear()
+        lastShown.clear()
+        ids.clear()
+        seen.clear()
+    }
 
     private fun idFor(key: String) = ids.getOrPut(key) { nextId++ }
 
@@ -242,5 +250,9 @@ class NotificationBatcher(private val maxSeen: Int = 1000) {
         if (!seen.add(id)) return false
         if (seen.size > maxSeen) seen.iterator().let { it.next(); it.remove() }
         return true
+    }
+
+    private companion object {
+        const val MAX_CONVERSATIONS = 50
     }
 }

@@ -129,13 +129,14 @@ class PlaybackService : MediaSessionService() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
                 val c = container
-                val item = c.notificationInbox.take(intent.getIntExtra(EXTRA_BATCH, -1))
+                // Checked before taking the message, so without a voice it stays to be played later.
+                val item = if (c.voices.hasAnyInstalled()) c.notificationInbox.take(intent.getIntExtra(EXTRA_BATCH, -1)) else null
                 when {
-                    item == null -> stopIfIdle()
                     !c.voices.hasAnyInstalled() -> {
                         toast(getString(R.string.need_voice))
                         stopIfIdle()
                     }
+                    item == null -> stopIfIdle()
                     else -> scope.launch { c.reader.interject(item.first, item.second) }
                 }
             }
