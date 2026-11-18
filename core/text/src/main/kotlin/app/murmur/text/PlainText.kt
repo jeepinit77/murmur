@@ -46,11 +46,26 @@ object PlainText {
         .flatMap { block ->
             // Single newlines inside a block: keep list-like lines separate, join wrapped prose.
             val lines = block.lines().map { it.trim() }.filter { it.isNotEmpty() }
-            if (lines.size > 1 && (lines.all { LIST_ITEM.containsMatchIn(it) } || lines.all { it.length < 40 })) lines
+            // One-paragraph-per-line text (most .txt books) also keeps its lines as paragraphs.
+            if (lines.size > 1 && (lines.all { LIST_ITEM.containsMatchIn(it) } || lines.all { it.length < 40 } || isLinePerParagraph(lines))) lines
             else listOf(lines.joinToString(" "))
         }
         .map { it.replace(Regex("\\s+"), " ").trim() }
         .filter { it.isNotEmpty() }
+
+    /**
+     * Text with one paragraph per line rather than hard-wrapped prose. Hard-wrapped lines are about
+     * the same length and often end mid-sentence; paragraph lines vary widely and nearly all end a
+     * sentence.
+     */
+    private fun isLinePerParagraph(lines: List<String>): Boolean {
+        if (lines.size < 3) return false
+        if (lines.count { SENTENCE_END.containsMatchIn(it) } < lines.size * 0.8) return false
+        // Very long lines can only be paragraphs; otherwise they must vary like paragraphs do.
+        if (lines.maxOf { it.length } > 200) return true
+        val lengths = lines.dropLast(1).map { it.length }
+        return lengths.max() - lengths.min() > 40
+    }
 
     /** Turns runs of two or more lines with the same number of tabs into tables; the rest is ordinary text. */
     private fun withTabTables(text: String, tables: TableMode, summarizer: TableSummarizer): List<String> {
@@ -83,6 +98,7 @@ object PlainText {
         return HtmlText.paragraphs(body, tables, summarizer)
     }
 
+    private val SENTENCE_END = Regex("""[.!?…:]["”’)\]]*$""")
     private val LIST_ITEM = Regex("""^([-*•]|\d+[.)])\s""")
     private val TAB_ROW = Regex("""(?m)^[^\t\n]*\t[^\n]*\n[^\t\n]*\t""")
 }

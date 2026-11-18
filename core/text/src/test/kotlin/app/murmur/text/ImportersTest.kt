@@ -100,4 +100,22 @@ class ImportersTest {
         assertTrue(paras[0].startsWith("This is the body text of page 1 which wraps"))
         assertEquals(4, paras.size)
     }
+
+    @Test fun onePararaphPerLineTextKeepsItsParagraphs() {
+        val book = listOf(
+            "It was a bright cold day in April, and the clocks were striking thirteen.",
+            "Winston slipped quickly through the glass doors, though not quickly enough to prevent a swirl of gritty dust from entering along with him.",
+            "The hallway smelt of boiled cabbage.",
+            "At one end of it a coloured poster, too large for indoor display, had been tacked to the wall.",
+        ).joinToString("\n")
+        assertEquals(4, PlainText.toDocument(book).chapters.single().paragraphs.size)
+    }
+
+    @Test fun hardWrappedProseIsStillJoined() {
+        val wrapped = "This paragraph was wrapped by an editor so that\n" +
+            "every line is about the same length, and the\n" +
+            "sentence keeps going across the line breaks.\n" +
+            "It should come out as a single paragraph here."
+        assertEquals(1, PlainText.toDocument(wrapped).chapters.single().paragraphs.size)
+    }
 }
