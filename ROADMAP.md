@@ -12,13 +12,12 @@ Gaps found in a review of the app (November 2026). The first group is needed for
 A full pass over the code (playback, notifications, sharing, importing, library, reader, voices, settings, startup, build) plus a fresh-install run on the emulator. Most findings are fixed, each in its own commit; what's left is below. The items after this section are still open from the first review.
 
 **Still open**
-- **Release build never run.** R8 is on and Kotlin 2.3 is paired with AGP 8.7.3, whose R8 may not read Kotlin 2.3 metadata. Build a release once and test voice download, playback, a Google voice's speed and PDF import.
-- **ML Kit usage logs.** ML Kit now starts only when Google voices are used, but then still sends its usage logs to Google. Disclose it in the privacy policy and Play's Data safety form.
-- **Save for later** runs as a media playback foreground service, which Play's foreground service review may reject. Move imports without playback to WorkManager (`dataSync`).
-- **Launcher icon and splash screen** use the old navy speech bubble; the app uses the violet waveform.
-- **"Read aloud with Murmur"** doesn't appear in Chrome's text selection menu (cause unknown; moving it to its own entry point didn't help).
-- **Startup** is still slow on a loaded emulator in debug builds; check a release build on a phone.
+- **Release signing key.** Release builds are still signed with the debug key (see below). Needs a key you create and keep.
+- **Source code link and Send feedback.** The About page has no source link (open-sourcing is undecided) and no feedback option (needs a destination).
+- **Privacy policy for the Play listing.** The in-app Privacy page exists; Play also needs it at a public web address.
+- **"Read aloud with Murmur"** doesn't appear in Chrome's text selection menu (cause unknown).
 - **Voice checksums**: the catalog has none, so a corrupted download is only caught when unpacking fails.
+- **Test on a phone**: library export and import, the Up next list, the About pages, and startup speed (the emulator froze repeatedly from memory pressure, so these weren't checked there).
 
 **Fixed in this review**
 - Security: the playback service ignores share, notification and cancel commands without Murmur's private token, and reads shared text files only by name from its cache.
@@ -35,10 +34,14 @@ A full pass over the code (playback, notifications, sharing, importing, library,
 - Accessibility: sliders have names for TalkBack; compact rows are 48dp tall.
 - Site sign-in survives rotation and saves cookies on Close.
 
-**Essential features still missing**
-- Library export and import, About page with licenses and source link, privacy policy, Send feedback (below)
-- A visible queue: sharing can add to a queue, but there's no way to see or change it
-- Voice licenses on the Voice screen (some Piper voices are non-commercial only)
+**Added for release**
+- Release build tested (R8 8.13 for Kotlin 2.3 metadata): launch, on-device voice and PDF import work.
+- Save for later runs as a background data-sync job, not the media service.
+- New launcher, splash and notification icons (violet waveform).
+- About: version, Privacy, Open source licenses, Voice credits.
+- Non-commercial voices labeled on Download voices.
+- Up next list in the expanded player.
+- Library export and import (Settings > Library).
 
 ### Release signing key — Planned
 Release builds are signed with the debug key ([app/build.gradle.kts](app/build.gradle.kts)). Create a release key and keep it outside the repository, with a backup. An app published with one key can't switch to another without users uninstalling first.
@@ -48,10 +51,10 @@ The manifest allows backup but has no rules, so downloaded voices (30–330 MB e
 - Exclude `voices/` and `site-icons/` from cloud backup (`dataExtractionRules` for Android 12+, `fullBackupContent` for older versions)
 - Decide whether device-to-device transfer, which has no size limit, should copy voices
 
-### Library export and import — Planned
+### Library export and import — Done
 Export the library (documents, progress, Done state) to a file and import it on another phone. Listed under Ideas until now; moved here because a reset or new phone otherwise means starting over.
 
-### About page — Planned
+### About page — Done (except the source link)
 Today it's one paragraph ([SettingsScreen.kt](app/src/main/java/app/murmur/ui/screens/SettingsScreen.kt)). Add:
 - Version and a link to the source code (GPL-3.0 expects the source to be offered with the app)
 - **Open source licenses**: sherpa-onnx, ONNX Runtime, espeak-ng, pdfbox-android, OkHttp, Commons Compress, AndroidX, Figtree
