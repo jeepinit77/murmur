@@ -1,5 +1,10 @@
 package app.murmur.ui.screens
 
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.outlined.LibraryBooks
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.heightIn
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -64,6 +69,7 @@ enum class SettingsPage(val route: String, val title: String) {
     APPEARANCE("appearance", "Appearance"),
     READING("reading", "Reading"),
     SHARING("sharing", "Sharing"),
+    LIBRARY("library", "Library"),
     ABOUT("about", "About");
 
     companion object {
@@ -110,6 +116,7 @@ fun SettingsScreen(
                     onPage(SettingsPage.READING)
                 },
                 Category(Icons.Outlined.Share, "Sharing", "What happens when you share to Murmur") { onPage(SettingsPage.SHARING) },
+                Category(Icons.Outlined.LibraryBooks, "Library", "Export or import your library") { onPage(SettingsPage.LIBRARY) },
                 Category(Icons.Outlined.Notifications, "Read Notifications", "Hear notifications automatically or tap to listen later.", onNotificationReading),
             )
             CategoryGroup(
@@ -156,6 +163,7 @@ fun SettingsPageScreen(
                 SettingsPage.READING -> ReadingSettings()
                 SettingsPage.SHARING -> SharingSettings()
                 SettingsPage.ABOUT -> AboutSettings(onWelcome, onAboutPage)
+                SettingsPage.LIBRARY -> LibrarySettings()
             }
         }
     }
@@ -372,6 +380,37 @@ private fun ReadingSettings() {
         note = "Sites you sign in to from an article's menu stay signed in, so articles from your subscriptions import in full.",
     ) {
         ActionRow("Clear website sign-ins", destructive = true) { confirmClear = true }
+    }
+}
+
+@Composable
+private fun LibrarySettings() {
+    val context = LocalContext.current
+    val library = context.container.library
+    val scope = rememberCoroutineScope()
+    fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { library.exportTo(it) } ?: error("Couldn't save the file")
+            }.onSuccess { n -> toast(if (n == 1) "Exported 1 item" else "Exported $n items") }
+                .onFailure { toast(it.message ?: "Couldn't export the library") }
+        }
+    }
+    val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { library.importFrom(it) } ?: error("Couldn't open the file")
+            }.onSuccess { n -> toast(if (n == 0) "Everything in that file is already in your library" else if (n == 1) "Added 1 item" else "Added $n items") }
+                .onFailure { toast(it.message ?: "Couldn't import the library") }
+        }
+    }
+    SettingsGroup(note = "Export saves every item, its reading progress and Done state to one file, to keep or move to another phone. Import adds the items from such a file; items already in your library are skipped.") {
+        ActionRow("Export library") { export.launch("Murmur library ${java.time.LocalDate.now()}.zip") }
+        SectionDivider(start = 14.dp)
+        ActionRow("Import library") { import.launch(arrayOf("application/zip", "application/octet-stream")) }
     }
 }
 

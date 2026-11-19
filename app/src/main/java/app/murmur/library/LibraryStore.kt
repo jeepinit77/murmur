@@ -1,5 +1,7 @@
 package app.murmur.library
 
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.builtins.MapSerializer
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
@@ -300,6 +302,86 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     }
 
     /**
+     * Writes the whole library to [out] as a zip: the index, every saved document, and reading
+     * progress and Done state. Pending and failed links are included as links.
+     */
+    suspend fun exportTo(out: java.io.OutputStream): Int = withContext(Dispatchers.IO) {
+        loaded.await()
+        val list = mutex.withLock { _docs.value }
+        java.util.zip.ZipOutputStream(out).use { zip ->
+            fun put(name: String, text: String) {
+                zip.putNextEntry(java.util.zip.ZipEntry(name))
+                zip.write(text.toByteArray())
+                zip.closeEntry()
+            }
+            put(EXPORT_INDEX, json.encodeToString(ListSerializer(DocMeta.serializer()), list))
+            for (meta in list) {
+                val file = File(dir, "${meta.id}.json")
+                if (file.exists()) {
+                    zip.putNextEntry(java.util.zip.ZipEntry("documents/${meta.id}.json"))
+                    file.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+            val progress = list.associate { it.id to progressOf(it.id) }.filterValues { it > 0 }
+            put(EXPORT_PROGRESS, json.encodeToString(MapSerializer(String.serializer(), Int.serializer()), progress))
+            put(EXPORT_FINISHED, json.encodeToString(ListSerializer(String.serializer()), list.map { it.id }.filter { it in _finished.value }))
+        }
+        list.size
+    }
+
+    /**
+     * Adds the items in an exported library to this one, with their progress and Done state.
+     * Items already here (same id, or the same web address) are skipped. Returns how many were added.
+     */
+    suspend fun importFrom(input: java.io.InputStream): Int = withContext(Dispatchers.IO) {
+        loaded.await()
+        val entries = HashMap<String, ByteArray>()
+        java.util.zip.ZipInputStream(input).use { zip ->
+            while (true) {
+                val e = zip.nextEntry ?: break
+                // Only the files an export contains, and only document names that are plain ids.
+                val ok = e.name == EXPORT_INDEX || e.name == EXPORT_PROGRESS || e.name == EXPORT_FINISHED ||
+                    EXPORT_DOCUMENT.matches(e.name)
+                if (ok && !e.isDirectory) entries[e.name] = zip.readBytes()
+            }
+        }
+        val index = entries[EXPORT_INDEX]?.toString(Charsets.UTF_8) ?: throw IOException("This isn't a Murmur library export")
+        val incoming = runCatching { json.decodeFromString(ListSerializer(DocMeta.serializer()), index) }
+            .getOrElse { throw IOException("This library export can't be read") }
+        val progress = entries[EXPORT_PROGRESS]?.let {
+            runCatching { json.decodeFromString(MapSerializer(String.serializer(), Int.serializer()), it.toString(Charsets.UTF_8)) }.getOrNull()
+        }.orEmpty()
+        val finished = entries[EXPORT_FINISHED]?.let {
+            runCatching { json.decodeFromString(ListSerializer(String.serializer()), it.toString(Charsets.UTF_8)) }.getOrNull()
+        }.orEmpty().toSet()
+        val added = mutex.withLock {
+            val current = _docs.value
+            val ids = current.mapTo(HashSet()) { it.id }
+            val keys = current.flatMapTo(HashSet()) { it.urlKeys }
+            val new = incoming.filter { meta ->
+                meta.id !in ids && meta.urlKeys.none { it in keys } &&
+                    (meta.status != DocStatus.READY || entries.containsKey("documents/${meta.id}.json"))
+            }
+            for (meta in new) {
+                entries["documents/${meta.id}.json"]?.let { writeAtomically(File(dir, "${meta.id}.json"), it.toString(Charsets.UTF_8)) }
+            }
+            val list = (current + new).sortedByDescending { it.addedAt }
+            writeIndex(list)
+            _docs.value = list
+            new
+        }
+        for (meta in added) {
+            progress[meta.id]?.let { setProgress(meta.id, it) }
+            if (meta.id in finished) {
+                _finished.value = _finished.value + meta.id
+                finishedPrefs.edit { putBoolean(meta.id, true) }
+            }
+        }
+        added.size
+    }
+
+    /**
      * Reads the index without ever losing it. Entries are decoded one at a time, so one this
      * version can't read doesn't drop the rest; those are kept and written back as they were.
      * If the file can't be parsed at all (cut off by a crash), it's kept aside and the library is
@@ -355,6 +437,10 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
 
     companion object {
         private const val TAG = "LibraryStore"
+        private const val EXPORT_INDEX = "murmur-library.json"
+        private const val EXPORT_PROGRESS = "progress.json"
+        private const val EXPORT_FINISHED = "done.json"
+        private val EXPORT_DOCUMENT = Regex("""documents/[A-Za-z0-9-]+\.json""")
         /** Match counts above this show as "100+". */
         const val MAX_COUNTED_MATCHES = 100
     }
