@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="background">#FFF9F8FF</color>
-    <color name="ic_background">#FF5B2EB0</color>
-    <color name="ic_background_start">#FF8257E0</color>
-    <color name="ic_foreground">#FFFFFFFF</color>
+    <color name="ic_background">#FF2E3A59</color>
+    <color name="ic_foreground">#FFF6D97A</color>
 </resources>
