@@ -197,7 +197,7 @@ Playback sometimes started again when it wasn't wanted. Fixes:
 
 ### Slower and Faster in the notification — Done
 The media notification's Speed button, which stepped up through 1.0×–2.0× and wrapped back to 1.0×, is replaced by Slower and Faster buttons ([MediaButtons.kt](app/src/main/java/app/murmur/playback/MediaButtons.kt)).
-- Each button shows the speed it moves to, from 0.5×, 0.8×, 1.0×, 1.2×, 1.5×, 1.8× and 2.0×. Slower is hidden at the slowest, Faster at the fastest.
+- Each button shows the speed it moves to, from 0.5×, 0.8×, 1.0×, 1.2×, 1.5×, 1.8× and 2.0×. Slower is always first and Faster second; at the slowest or fastest speed, Rewind takes the missing button's place.
 - A speed slider can't open from the notification: on Android 13 and later the system draws the media controls, and a button tap only sends a command to the playback service, which isn't allowed to open a screen.
 - Android's media controls have room for two custom buttons beside previous and next, so Rewind now shows only where there's more room (such as Android Auto). Previous sentence still goes back from the notification.
 

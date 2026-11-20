@@ -47,24 +47,29 @@ object MediaButtons {
     /** The step above [current], or null at the fastest. */
     fun fasterSpeed(current: Float): Float? = SPEED_STEPS.firstOrNull { it > current + 0.01f }
 
-    fun buttons(rewindSeconds: Int, speed: Float): List<CommandButton> = listOfNotNull(
-        slowerSpeed(speed)?.let {
+    /**
+     * Slower first and Faster second, so each stays in the same place. At the slowest or fastest
+     * speed, Rewind takes the missing button's place rather than the other button moving over.
+     */
+    fun buttons(rewindSeconds: Int, speed: Float): List<CommandButton> {
+        val rewind = CommandButton.Builder(rewindIcon(rewindSeconds))
+            .setSessionCommand(rewindCommand)
+            .setDisplayName("Rewind $rewindSeconds seconds")
+            .build()
+        val slower = slowerSpeed(speed)?.let {
             CommandButton.Builder(speedIcon(it))
                 .setSessionCommand(slowerCommand)
                 .setDisplayName("Slower, ${formatSpeed(it)}")
                 .build()
-        },
-        fasterSpeed(speed)?.let {
+        }
+        val faster = fasterSpeed(speed)?.let {
             CommandButton.Builder(speedIcon(it))
                 .setSessionCommand(fasterCommand)
                 .setDisplayName("Faster, ${formatSpeed(it)}")
                 .build()
-        },
-        CommandButton.Builder(rewindIcon(rewindSeconds))
-            .setSessionCommand(rewindCommand)
-            .setDisplayName("Rewind $rewindSeconds seconds")
-            .build(),
-    )
+        }
+        return if (slower != null && faster != null) listOf(slower, faster, rewind) else listOf(slower ?: rewind, faster ?: rewind)
+    }
 
     private fun rewindIcon(seconds: Int): Int = when (seconds) {
         5 -> CommandButton.ICON_SKIP_BACK_5
