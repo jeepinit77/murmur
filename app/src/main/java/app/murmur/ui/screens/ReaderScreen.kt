@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import app.murmur.ui.theme.LocalAccentColors
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.draw.drawBehind
@@ -802,6 +803,8 @@ private fun ReaderScreenBody(
                         expanded = !listState.lastScrolledForward,
                         icon = { Icon(Icons.Default.PlayArrow, null) },
                         text = { Text("Play") },
+                        containerColor = LocalAccentColors.current.button,
+                        contentColor = LocalAccentColors.current.onButton,
                         modifier = Modifier.navigationBarsPadding().padding(16.dp),
                     )
                 }
@@ -960,7 +963,7 @@ private fun ParagraphText(
         }
     }
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val highlight = scheme.primaryContainer.copy(alpha = 0.75f)
+    val highlight = LocalAccentColors.current.highlight
     // Long press selects text to copy; a tap still listens from that sentence.
     SelectionContainer {
     Text(

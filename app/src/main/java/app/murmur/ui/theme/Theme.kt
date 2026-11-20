@@ -12,11 +12,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.container
+
+/** The current palette's play button and highlight colors. */
+val LocalAccentColors = staticCompositionLocalOf { AccentColors(Color.Unspecified, Color.Unspecified, Color.Unspecified) }
 
 /** Whether the phone can use colors from the wallpaper. */
 val wallpaperColorsAvailable: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -42,8 +48,12 @@ fun MurmurTheme(content: @Composable () -> Unit) {
             if (dark) dynamicDarkColorScheme(context).let { if (black) it.withBlackBackground() else it }
             else dynamicLightColorScheme(context)
         } else {
-            schemeFor(if (palette == Palette.WALLPAPER) Palette.VIOLET else palette, dark, black)
+            schemeFor(if (palette == Palette.WALLPAPER) Palette.NAVY else palette, dark, black)
         }
+    }
+    val accents = remember(scheme, palette, dark) {
+        val p = if (palette == Palette.WALLPAPER && !wallpaperColorsAvailable) Palette.NAVY else palette
+        p.accentColors(scheme, dark)
     }
     // Status and navigation bar icons follow the app's theme, which can differ from the system's.
     val view = LocalView.current
@@ -56,7 +66,9 @@ fun MurmurTheme(content: @Composable () -> Unit) {
             }
         }
     }
-    MaterialTheme(colorScheme = scheme, typography = MurmurTypography, shapes = MurmurShapes, content = content)
+    CompositionLocalProvider(LocalAccentColors provides accents) {
+        MaterialTheme(colorScheme = scheme, typography = MurmurTypography, shapes = MurmurShapes, content = content)
+    }
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

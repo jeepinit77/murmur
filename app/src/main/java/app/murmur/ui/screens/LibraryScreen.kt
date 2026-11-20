@@ -134,7 +134,7 @@ import androidx.compose.ui.semantics.semantics
 import app.murmur.text.WebArticleExtractor
 import app.murmur.ui.library.DocIcon
 import app.murmur.ui.library.Equalizer
-import app.murmur.ui.library.MurmurMark
+import app.murmur.ui.library.AppLogo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -244,7 +244,7 @@ fun LibraryScreen(
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            MurmurMark()
+                            AppLogo(32.dp)
                             Spacer(Modifier.width(12.dp))
                             Text("Murmur", style = MaterialTheme.typography.headlineSmall)
                         }

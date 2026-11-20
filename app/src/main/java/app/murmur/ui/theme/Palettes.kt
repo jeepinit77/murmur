@@ -14,9 +14,19 @@ enum class ThemeMode(val label: String) {
 
 /**
  * The app's color choices. [WALLPAPER] uses Android's colors from the wallpaper (Android 12+).
- * Hue and chroma are OKLCH values for the primary color.
+ * Hue and chroma are OKLCH values for the primary color; the accent, when given, sets the
+ * tertiary color instead of a hue shifted from the primary.
  */
-enum class Palette(val label: String, internal val hue: Double, internal val chroma: Double) {
+enum class Palette(
+    val label: String,
+    internal val hue: Double,
+    internal val chroma: Double,
+    internal val accentHue: Double? = null,
+    internal val accentChroma: Double? = null,
+    internal val neutralChroma: Double = 0.010,
+) {
+    /** The launcher icon's navy, with its yellow as the accent; surfaces lean navy. */
+    NAVY("Navy", 266.0, 0.09, accentHue = 90.0, accentChroma = 0.13, neutralChroma = 0.022),
     VIOLET("Violet", 293.0, 0.20),
     BLUE("Blue", 258.0, 0.16),
     TEAL("Teal", 195.0, 0.11),
@@ -28,16 +38,33 @@ enum class Palette(val label: String, internal val hue: Double, internal val chr
 
     /** The swatch shown in Settings. */
     fun swatch(dark: Boolean): Color = Color(TonalPalette(hue, chroma).tone(if (dark) 80 else 40))
+
+    /** The play button and reading highlight: the accent when the palette has one, else the primary color. */
+    fun accentColors(scheme: ColorScheme, dark: Boolean): AccentColors {
+        if (accentHue == null || this == WALLPAPER) {
+            return AccentColors(scheme.primary, scheme.onPrimary, scheme.primaryContainer.copy(alpha = 0.75f))
+        }
+        val accent = TonalPalette(accentHue, accentChroma ?: chroma)
+        // Like the icon: a bright accent with the primary's darkest tone on it.
+        return AccentColors(
+            button = Color(accent.tone(85)),
+            onButton = Color(TonalPalette(hue, chroma).tone(20)),
+            highlight = Color(accent.tone(if (dark) 35 else 90)).copy(alpha = if (dark) 0.85f else 0.9f),
+        )
+    }
 }
+
+/** Colors for the play button and the sentence being read. */
+data class AccentColors(val button: Color, val onButton: Color, val highlight: Color)
 
 private class Tonals(p: Palette) {
     val primary = TonalPalette(p.hue, p.chroma)
     /** Light tones of saturated hues (teal, green) glare at full chroma, so containers use less. */
     val soft = TonalPalette(p.hue, minOf(p.chroma, 0.07))
     val secondary = TonalPalette(p.hue, p.chroma * 0.35)
-    val tertiary = TonalPalette((p.hue + 60) % 360, p.chroma * 0.6)
-    val neutral = TonalPalette(p.hue, 0.010)
-    val neutralVariant = TonalPalette(p.hue, 0.022)
+    val tertiary = TonalPalette(p.accentHue ?: ((p.hue + 60) % 360), p.accentChroma ?: (p.chroma * 0.6))
+    val neutral = TonalPalette(p.hue, p.neutralChroma)
+    val neutralVariant = TonalPalette(p.hue, maxOf(0.022, p.neutralChroma * 1.5))
     val error = TonalPalette(27.0, 0.19)
 }
 

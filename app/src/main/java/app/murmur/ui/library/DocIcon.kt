@@ -11,7 +11,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import app.murmur.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Description
@@ -114,21 +120,21 @@ fun Equalizer(playing: Boolean, modifier: Modifier = Modifier, color: Color = Ma
     }
 }
 
-/** Murmur's mark for the top bar: sound bars of different heights. */
+/** Murmur's logo: the launcher icon, the yellow speech bubble on navy, whatever the app's colors. */
 @Composable
-fun MurmurMark(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
-    Canvas(modifier.size(28.dp)) {
-        val levels = floatArrayOf(0.3f, 0.65f, 1f, 0.5f, 0.85f, 0.4f)
-        val step = size.width / levels.size
-        val barWidth = step * 0.55f
-        levels.forEachIndexed { i, level ->
-            val h = size.height * level
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(i * step + (step - barWidth) / 2, (size.height - h) / 2),
-                size = Size(barWidth, h),
-                cornerRadius = CornerRadius(barWidth / 2),
-            )
-        }
+fun AppLogo(size: Dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.3f))
+            .background(colorResource(R.color.ic_background)),
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            tint = Color.Unspecified,
+            // The icon's drawing fills the middle of a canvas sized for launcher masks; scale it up a little.
+            modifier = Modifier.fillMaxSize().scale(1.25f),
+        )
     }
 }

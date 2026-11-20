@@ -1,6 +1,8 @@
 package app.murmur.ui.screens
 
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.IconButtonDefaults
+import app.murmur.ui.theme.LocalAccentColors
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.semantics.stateDescription
@@ -419,10 +421,15 @@ private fun UpNext(ids: List<String>, reader: Reader) {
 @Composable
 fun PlayPauseButton(state: ReaderState, reader: Reader, size: Dp = 48.dp) {
     val iconSize = size * 0.5f
-    FilledIconButton(onClick = { reader.toggle() }, modifier = Modifier.size(size)) {
+    val accent = LocalAccentColors.current
+    FilledIconButton(
+        onClick = { reader.toggle() },
+        modifier = Modifier.size(size),
+        colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent.button, contentColor = accent.onButton),
+    ) {
         when {
             state.playWhenReady && state.buffering -> CircularProgressIndicator(
-                modifier = Modifier.size(iconSize * 0.8f), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(iconSize * 0.8f), strokeWidth = 2.dp, color = accent.onButton,
             )
             state.playWhenReady -> Icon(Icons.Default.Pause, "Pause", Modifier.size(iconSize))
             else -> Icon(Icons.Default.PlayArrow, "Play", Modifier.size(iconSize))

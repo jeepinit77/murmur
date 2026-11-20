@@ -165,7 +165,7 @@ class Settings(context: Context) {
         prefs.edit { putString(KEY_THEME_MODE, m.name) }
     }
 
-    private val _palette = MutableStateFlow(enumPref(KEY_PALETTE, Palette.VIOLET))
+    private val _palette = MutableStateFlow(enumPref(KEY_PALETTE, Palette.NAVY))
     val palette: StateFlow<Palette> = _palette.asStateFlow()
     fun setPalette(p: Palette) {
         _palette.value = p

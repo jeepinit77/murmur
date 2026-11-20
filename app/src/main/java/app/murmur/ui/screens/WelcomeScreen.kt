@@ -81,7 +81,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.murmur.container
 import app.murmur.notifications.NotificationReaderService
-import app.murmur.ui.library.MurmurMark
+import app.murmur.ui.library.AppLogo
+import app.murmur.ui.theme.LocalAccentColors
+import androidx.compose.ui.graphics.luminance
 import app.murmur.voice.DownloadState
 import app.murmur.voice.Voice
 import app.murmur.voice.VoicePackage
@@ -237,13 +239,24 @@ private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun IconBadge(icon: ImageVector) {
     val scheme = MaterialTheme.colorScheme
+    val accent = LocalAccentColors.current
+    val dark = scheme.background.luminance() < 0.5f
+    // A palette with its own accent (Navy) shows it on the icon, like the launcher icon.
+    val hasAccent = accent.button != scheme.primary
     Box(
         Modifier
             .size(64.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(scheme.primary, scheme.tertiary))),
+            .background(if (dark) scheme.primaryContainer else scheme.primary),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, null, Modifier.size(32.dp), tint = scheme.onPrimary) }
+    ) {
+        val tint = when {
+            hasAccent -> accent.button
+            dark -> scheme.onPrimaryContainer
+            else -> scheme.onPrimary
+        }
+        Icon(icon, null, Modifier.size(32.dp), tint = tint)
+    }
 }
 
 @Composable
@@ -286,13 +299,7 @@ private fun WelcomeIntro() {
         Modifier.fillMaxSize().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            Modifier
-                .size(96.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary))),
-            contentAlignment = Alignment.Center,
-        ) { MurmurMark(Modifier.size(52.dp), color = MaterialTheme.colorScheme.onPrimary) }
+        AppLogo(96.dp)
         Spacer(Modifier.height(32.dp))
         Text("Welcome to Murmur", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
