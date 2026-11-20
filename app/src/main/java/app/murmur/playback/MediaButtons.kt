@@ -20,32 +20,49 @@ import kotlin.math.abs
 
 /**
  * Murmur's own buttons in the system media player (notification, lock screen, watch, car):
- * Rewind by the distance set in Settings, and Speed, which steps through [SPEED_STEPS].
+ * Slower and Faster, which move one step through [SPEED_STEPS], and Rewind by the distance set in
+ * Settings. Each speed button shows the speed it moves to.
+ *
+ * Android's own media controls (notification and lock screen) have room for two of these beside
+ * previous and next, so they show Slower and Faster; Rewind appears where there's more room.
  */
 @OptIn(UnstableApi::class)
 object MediaButtons {
     private const val ACTION_REWIND = "app.murmur.REWIND"
-    private const val ACTION_SPEED = "app.murmur.SPEED"
+    private const val ACTION_SLOWER = "app.murmur.SLOWER"
+    private const val ACTION_FASTER = "app.murmur.FASTER"
     /** The phone's lock screen and quick settings media controls. */
     private const val SYSTEM_UI = "com.android.systemui"
     private val PLAY_KEYS = setOf(KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK)
     private val rewindCommand = SessionCommand(ACTION_REWIND, Bundle.EMPTY)
-    private val speedCommand = SessionCommand(ACTION_SPEED, Bundle.EMPTY)
+    private val slowerCommand = SessionCommand(ACTION_SLOWER, Bundle.EMPTY)
+    private val fasterCommand = SessionCommand(ACTION_FASTER, Bundle.EMPTY)
 
-    /** Speeds the Speed button steps through; each one has a matching Media3 icon. */
-    val SPEED_STEPS = listOf(1.0f, 1.2f, 1.5f, 1.8f, 2.0f)
+    /** Speeds the Slower and Faster buttons move through; each one has a matching Media3 icon. */
+    val SPEED_STEPS = listOf(0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 1.8f, 2.0f)
 
-    /** The next step above [current], wrapping back to 1×. */
-    fun nextSpeed(current: Float): Float = SPEED_STEPS.firstOrNull { it > current + 0.01f } ?: SPEED_STEPS.first()
+    /** The step below [current], or null at the slowest. */
+    fun slowerSpeed(current: Float): Float? = SPEED_STEPS.lastOrNull { it < current - 0.01f }
 
-    fun buttons(rewindSeconds: Int, speed: Float): List<CommandButton> = listOf(
+    /** The step above [current], or null at the fastest. */
+    fun fasterSpeed(current: Float): Float? = SPEED_STEPS.firstOrNull { it > current + 0.01f }
+
+    fun buttons(rewindSeconds: Int, speed: Float): List<CommandButton> = listOfNotNull(
+        slowerSpeed(speed)?.let {
+            CommandButton.Builder(speedIcon(it))
+                .setSessionCommand(slowerCommand)
+                .setDisplayName("Slower, ${formatSpeed(it)}")
+                .build()
+        },
+        fasterSpeed(speed)?.let {
+            CommandButton.Builder(speedIcon(it))
+                .setSessionCommand(fasterCommand)
+                .setDisplayName("Faster, ${formatSpeed(it)}")
+                .build()
+        },
         CommandButton.Builder(rewindIcon(rewindSeconds))
             .setSessionCommand(rewindCommand)
             .setDisplayName("Rewind $rewindSeconds seconds")
-            .build(),
-        CommandButton.Builder(speedIcon(speed))
-            .setSessionCommand(speedCommand)
-            .setDisplayName("Speed ${formatSpeed(speed)}")
             .build(),
     )
 
@@ -71,7 +88,7 @@ object MediaButtons {
         }
     }
 
-    /** Lets controllers (including the system notification) use the two buttons. */
+    /** Lets controllers (including the system notification) use Murmur's buttons. */
     class Callback(
         private val reader: Reader,
         private val settings: Settings,
@@ -116,7 +133,8 @@ object MediaButtons {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(rewindCommand)
-                .add(speedCommand)
+                .add(slowerCommand)
+                .add(fasterCommand)
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -132,7 +150,8 @@ object MediaButtons {
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
                 ACTION_REWIND -> reader.skipSeconds(-settings.rewindSeconds.value)
-                ACTION_SPEED -> reader.setSpeed(nextSpeed(reader.state.value.speed))
+                ACTION_SLOWER -> slowerSpeed(reader.state.value.speed)?.let(reader::setSpeed)
+                ACTION_FASTER -> fasterSpeed(reader.state.value.speed)?.let(reader::setSpeed)
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

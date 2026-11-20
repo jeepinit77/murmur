@@ -83,7 +83,7 @@ class PlaybackService : MediaSessionService() {
             .setCallback(MediaButtons.Callback(c.reader, c.settings, packageName))
             .build()
         session = s
-        // Keep the Rewind and Speed buttons' icons in step with the settings.
+        // Keep the Rewind, Slower and Faster buttons' icons in step with the settings and speed.
         scope.launch {
             combine(c.settings.rewindSeconds, c.reader.state.map { it.speed }.distinctUntilChanged()) { r, sp -> r to sp }
                 .collect { (rewind, speed) -> s.setMediaButtonPreferences(MediaButtons.buttons(rewind, speed)) }

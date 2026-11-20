@@ -195,14 +195,11 @@ Playback sometimes started again when it wasn't wanted. Fixes:
 - **Notifications:** pausing while a notification is read keeps the article paused afterward.
 - **Scrolling:** outside reader mode, scrolling no longer moves where listening continues.
 
-### Speed slider from the notification — Planned
-Tapping the Speed button in the media notification opens a speed slider instead of moving to the next speed.
-- Today the button steps through 1.0×, 1.2×, 1.5×, 1.8× and 2.0×, then back to 1.0× ([MediaButtons.kt](app/src/main/java/app/murmur/playback/MediaButtons.kt)). Reaching a slower speed means going all the way around.
-- The slider would match the reader's: 0.5–3×, in small steps, showing the current speed.
-- A notification can't hold a slider itself, so the button opens a small dialog over whatever app is in front, like the "Already in your library" popup.
-- Things to check:
-  - Media3 notification buttons send a command to the playback service rather than opening a screen, and Android limits starting screens from the background. The button may need a custom notification layout or a different way to open the dialog.
-  - On the lock screen the dialog would need the phone unlocked first. Keeping the current stepping there may be simpler.
+### Slower and Faster in the notification — Done
+The media notification's Speed button, which stepped up through 1.0×–2.0× and wrapped back to 1.0×, is replaced by Slower and Faster buttons ([MediaButtons.kt](app/src/main/java/app/murmur/playback/MediaButtons.kt)).
+- Each button shows the speed it moves to, from 0.5×, 0.8×, 1.0×, 1.2×, 1.5×, 1.8× and 2.0×. Slower is hidden at the slowest, Faster at the fastest.
+- A speed slider can't open from the notification: on Android 13 and later the system draws the media controls, and a button tap only sends a command to the playback service, which isn't allowed to open a screen.
+- Android's media controls have room for two custom buttons beside previous and next, so Rewind now shows only where there's more room (such as Android Auto). Previous sentence still goes back from the notification.
 
 ## Voices
 
